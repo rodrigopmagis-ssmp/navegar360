@@ -1,0 +1,1380 @@
+import React, { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+    ChevronLeft, FileText, Users, Activity, Package, Check,
+    AlertCircle, Clock, Save, MoreHorizontal, Download,
+    Share2, Flag, Upload, MessageSquare, MapPin, Phone,
+    Eye, Trash2, Filter, CheckCircle, Calendar as CalendarIcon,
+    ChevronDown, ChevronUp, Send, ShieldCheck, Wrench, AlertTriangle,
+    Printer, ExternalLink, Plus, Microscope, Search
+} from 'lucide-react';
+import { EquipmentStatus } from '../types';
+
+const TabButton: React.FC<{ active: boolean; label: string; onClick: () => void }> = ({ active, label, onClick }) => (
+    <button
+        onClick={onClick}
+        className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all whitespace-nowrap ${active
+            ? 'bg-primary-600 text-white shadow-lg shadow-primary-600/20'
+            : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+            }`}
+    >
+        {label}
+    </button>
+);
+
+const SectionHeader: React.FC<{
+    icon: React.ElementType;
+    title: string;
+    actionLabel?: string;
+    onAction?: () => void
+}> = ({ icon: Icon, title, actionLabel, onAction }) => (
+    <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+            <Icon className="w-5 h-5 text-primary-600" />
+            <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide">{title}</h3>
+        </div>
+        {actionLabel && (
+            <button
+                onClick={onAction}
+                className="flex items-center gap-1 text-primary-600 text-sm font-bold hover:text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+                <Plus className="w-4 h-4" /> {actionLabel}
+            </button>
+        )}
+    </div>
+);
+
+// --- Overview Tab Components ---
+
+const OverviewStatusCard: React.FC<{
+    icon: React.ElementType;
+    title: string;
+    subtitle: string;
+    status: 'OK' | 'WARNING' | 'CRITICAL' | 'PENDING';
+    progress: number;
+}> = ({ icon: Icon, title, subtitle, status, progress }) => {
+    let colorClass = '';
+    let bgClass = '';
+    let textClass = '';
+    let statusLabel = '';
+    let barColor = '';
+
+    switch (status) {
+        case 'OK':
+            colorClass = 'text-emerald-500';
+            bgClass = 'bg-emerald-50';
+            textClass = 'text-emerald-600';
+            statusLabel = 'OK';
+            barColor = 'bg-emerald-500';
+            break;
+        case 'WARNING':
+            colorClass = 'text-amber-500';
+            bgClass = 'bg-amber-50';
+            textClass = 'text-amber-600';
+            statusLabel = 'ALERTA';
+            barColor = 'bg-amber-400';
+            break;
+        case 'CRITICAL':
+            colorClass = 'text-red-500';
+            bgClass = 'bg-red-50';
+            textClass = 'text-red-600';
+            statusLabel = 'CRÍTICO';
+            barColor = 'bg-red-500';
+            break;
+        case 'PENDING':
+            colorClass = 'text-amber-500';
+            bgClass = 'bg-amber-50';
+            textClass = 'text-amber-600';
+            statusLabel = 'PENDENTE';
+            barColor = 'bg-amber-400';
+            break;
+    }
+
+    return (
+        <div className={`bg-white rounded-xl p-5 border shadow-sm relative overflow-hidden ${status === 'CRITICAL' ? 'border-red-200' : 'border-slate-200'}`}>
+            <div className="flex justify-between items-start mb-4">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${bgClass} ${colorClass}`}>
+                    <Icon className="w-5 h-5" />
+                </div>
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${textClass}`}>{statusLabel}</span>
+            </div>
+            <div>
+                <h4 className="font-bold text-slate-800 mb-1">{title}</h4>
+                <p className="text-xs text-slate-500 mb-4 h-5 truncate">{subtitle}</p>
+
+                <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Progresso</span>
+                    <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${progress}%` }}></div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-600">{progress}%</span>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const TimelineItem: React.FC<{ icon: React.ElementType; color: string; title: string; desc: string; time: string }> = ({ icon: Icon, color, title, desc, time }) => (
+    <div className="flex gap-4">
+        <div className={`w-10 h-10 rounded-full ${color} flex items-center justify-center shrink-0 shadow-sm text-white border-2 border-white ring-1 ring-slate-100`}>
+            <Icon className="w-5 h-5" />
+        </div>
+        <div className="flex-1 pb-6 border-b border-slate-50 last:border-0 last:pb-0">
+            <div className="flex justify-between items-start">
+                <h5 className="font-bold text-slate-800 text-sm">{title}</h5>
+                <span className="text-xs text-slate-400 whitespace-nowrap">{time}</span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">{desc}</p>
+        </div>
+    </div>
+)
+
+const SummaryRow: React.FC<{ icon: React.ElementType; bg: string; text: string; label: string; sub: string }> = ({ icon: Icon, bg, text, label, sub }) => (
+    <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${bg} ${text}`}>
+            <Icon className="w-5 h-5" />
+        </div>
+        <div>
+            <p className="text-sm font-bold text-white">{label}</p>
+            <p className="text-xs text-slate-400">{sub}</p>
+        </div>
+    </div>
+)
+
+const OverviewTab: React.FC = () => {
+    return (
+        <div className="space-y-8 animate-fade-in">
+            {/* Status Consolidated */}
+            <div>
+                <h3 className="font-bold text-lg text-slate-800 mb-4">Status Consolidado</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <OverviewStatusCard
+                        icon={FileText}
+                        title="Documentos"
+                        subtitle="2 documentos faltantes"
+                        status="PENDING"
+                        progress={60}
+                    />
+                    <OverviewStatusCard
+                        icon={Activity}
+                        title="Anestesia"
+                        subtitle="Avaliação pré-anestésica concluída"
+                        status="OK"
+                        progress={100}
+                    />
+                    <OverviewStatusCard
+                        icon={ShieldCheck}
+                        title="Convênio"
+                        subtitle="Guia de autorização confirmada"
+                        status="OK"
+                        progress={100}
+                    />
+                    <OverviewStatusCard
+                        icon={Package}
+                        title="OPME"
+                        subtitle="Fornecedor não confirmado"
+                        status="CRITICAL"
+                        progress={25}
+                    />
+                    <OverviewStatusCard
+                        icon={Wrench}
+                        title="Equipamentos"
+                        subtitle="Torre de vídeo em manutenção"
+                        status="WARNING"
+                        progress={50}
+                    />
+                    <OverviewStatusCard
+                        icon={Users}
+                        title="Equipe"
+                        subtitle="5 membros confirmados"
+                        status="OK"
+                        progress={100}
+                    />
+                </div>
+            </div>
+
+            {/* Bottom Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Timeline */}
+                <div className="lg:col-span-2">
+                    <h3 className="font-bold text-lg text-slate-800 mb-4">Linha do Tempo de Atividades</h3>
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <div className="space-y-4">
+                            {/* Timeline Items */}
+                            <TimelineItem
+                                icon={Users}
+                                color="bg-primary-500"
+                                title="Dr. Ricardo confirmou a escala médica"
+                                desc="Responsável pela equipe cirúrgica"
+                                time="Há 15 min"
+                            />
+                            <TimelineItem
+                                icon={ShieldCheck}
+                                color="bg-slate-300"
+                                title="Convênio autorizado pelo Bradesco Saúde"
+                                desc="Guia 3882190-A vinculada"
+                                time="Hoje, 09:00"
+                            />
+                            <TimelineItem
+                                icon={Upload}
+                                color="bg-slate-300"
+                                title="Upload de exames laboratoriais"
+                                desc="Enviado por Enf. Marina Santos"
+                                time="Ontem, 16:45"
+                            />
+                            <TimelineItem
+                                icon={AlertTriangle}
+                                color="bg-red-500"
+                                title="Alerta de divergência em OPME"
+                                desc="Cotação do fornecedor pendente de revisão"
+                                time="Ontem, 14:20"
+                            />
+                        </div>
+                        <button className="w-full mt-6 py-3 border border-primary-200 text-primary-600 rounded-lg text-sm font-bold hover:bg-primary-50 transition-colors">
+                            Ver histórico completo
+                        </button>
+                    </div>
+                </div>
+
+                {/* Executive Summary */}
+                <div>
+                    <h3 className="font-bold text-lg text-slate-800 mb-4">Resumo Executivo</h3>
+                    <div className="bg-slate-900 rounded-xl p-6 text-white shadow-xl h-fit">
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Métricas de Prontidão</p>
+
+                        <div className="mb-8">
+                            <div className="flex items-end gap-2 mb-2">
+                                <span className="text-4xl font-bold">72%</span>
+                                <span className="text-sm text-slate-400 mb-1">concluído</span>
+                            </div>
+                            <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                                <div className="h-full bg-primary-500 rounded-full" style={{ width: '72%' }}></div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4 mb-8">
+                            <SummaryRow icon={Check} bg="bg-emerald-500/20" text="text-emerald-400" label="3 Áreas Prontas" sub="Sem pendências" />
+                            <SummaryRow icon={AlertTriangle} bg="bg-amber-500/20" text="text-amber-400" label="2 Áreas com Alerta" sub="Atenção requerida" />
+                            <SummaryRow icon={AlertCircle} bg="bg-red-500/20" text="text-red-400" label="1 Bloqueio Crítico" sub="Impede realização" />
+                        </div>
+
+                        <div className="bg-slate-800 rounded-lg p-4 border border-slate-700">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Próximo Passo:</p>
+                            <p className="text-sm font-bold leading-tight">Confirmar cotação de OPME com o fornecedor ProHosp.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- End Overview Tab Components ---
+
+const MedicalOrderTab: React.FC = () => {
+    return (
+        <div className="space-y-8 animate-fade-in">
+            {/* 1. DADOS DA CIRURGIA */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4">
+                    <span className="text-xs font-bold text-slate-400 uppercase border border-slate-200 px-2 py-1 rounded bg-slate-50">Modo Visualização</span>
+                </div>
+                <SectionHeader icon={CalendarIcon} title="1. DADOS DA CIRURGIA" />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Hospital</label>
+                        <p className="text-sm font-medium text-slate-800">Hospital Albert Einstein</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Data e Hora Prevista</label>
+                        <p className="text-sm font-medium text-slate-800">24/09/2023 - 08:30</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase mb-1.5">Necessita de Anestesista?</label>
+                        <div className="flex items-center gap-2">
+                            <span className="flex h-2 w-2 rounded-full bg-emerald-500"></span>
+                            <span className="text-sm font-medium text-slate-800">Sim</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 2. PROCEDIMENTOS */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                <SectionHeader icon={Plus} title="2. PROCEDIMENTOS" />
+
+                <div className="space-y-4">
+                    <div className="grid grid-cols-12 gap-4 px-2 border-b border-slate-100 pb-2">
+                        <div className="col-span-2 text-[10px] font-bold text-slate-400 uppercase">Código TUSS</div>
+                        <div className="col-span-8 text-[10px] font-bold text-slate-400 uppercase">Descrição</div>
+                        <div className="col-span-2 text-[10px] font-bold text-slate-400 uppercase text-center">Qtd.</div>
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-4 items-center px-2">
+                        <div className="col-span-2 text-sm text-slate-600 font-mono">30715123</div>
+                        <div className="col-span-8 text-sm font-medium text-slate-800">Artroplastia total de joelho com implante</div>
+                        <div className="col-span-2 text-sm font-bold text-slate-800 text-center">1</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. EXAMES */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                <SectionHeader icon={Microscope} title="3. EXAMES" />
+
+                <div className="space-y-0 divide-y divide-slate-100">
+                    <div className="grid grid-cols-12 gap-4 py-2 px-2">
+                        <div className="col-span-2 text-[10px] font-bold text-slate-400 uppercase">Código TUSS</div>
+                        <div className="col-span-10 text-[10px] font-bold text-slate-400 uppercase">Descrição do Exame</div>
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-4 py-3 items-center px-2">
+                        <div className="col-span-2 text-sm font-medium text-slate-600">40304361</div>
+                        <div className="col-span-10 text-sm text-slate-800">Hemograma completo</div>
+                    </div>
+
+                    <div className="grid grid-cols-12 gap-4 py-3 items-center px-2">
+                        <div className="col-span-2 text-sm font-medium text-slate-600">40301630</div>
+                        <div className="col-span-10 text-sm text-slate-800">Coagulograma</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 5. MATERIAIS ESPECIAIS (OPME) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                <SectionHeader icon={Package} title="5. MATERIAIS ESPECIAIS (OPME)" />
+
+                <div className="grid grid-cols-12 gap-4 px-2 mb-2 border-b border-slate-100 pb-2">
+                    <div className="col-span-10 text-[10px] font-bold text-slate-400 uppercase">Descrição do Material</div>
+                    <div className="col-span-2 text-[10px] font-bold text-slate-400 uppercase text-center">Qtd.</div>
+                </div>
+
+                <div className="grid grid-cols-12 gap-4 items-center px-2 pt-2">
+                    <div className="col-span-10 text-sm font-medium text-slate-800">
+                        Prótese de Quadril Híbrida Mod.
+                    </div>
+                    <div className="col-span-2 text-sm font-bold text-slate-800 text-center">
+                        1
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function StatusSummaryCard({ label, count, icon: Icon, color }: { label: string; count: number; icon: React.ElementType; color: string }) {
+    return (
+        <div className="bg-white p-4 rounded-xl border border-slate-200 flex items-center justify-between">
+            <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
+                <p className="text-2xl font-bold text-slate-800 leading-none">{count}</p>
+            </div>
+            <div className={`p-2 rounded-lg bg-slate-50 ${color}`}>
+                <Icon className="w-5 h-5" />
+            </div>
+        </div>
+    );
+}
+
+
+
+const EquipmentsTab: React.FC = () => {
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h3 className="text-lg font-bold text-slate-800">Gestão de Equipamentos</h3>
+                    <p className="text-sm text-slate-500">Controle e logística de equipamentos cirúrgicos alocados.</p>
+                </div>
+                <div className="flex gap-3">
+                    <button className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 flex items-center gap-2">
+                        <Filter className="w-4 h-4" /> Filtrar
+                    </button>
+                    <button className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary-700 flex items-center gap-2">
+                        <Upload className="w-4 h-4" /> Novo Equipamento
+                    </button>
+                </div>
+            </div>
+
+            {/* Status Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <StatusSummaryCard label="Total" count={24} icon={Package} color="text-primary-600" />
+                <StatusSummaryCard label="Prontos" count={18} icon={Check} color="text-emerald-500" />
+                <StatusSummaryCard label="Pendentes" count={4} icon={MoreHorizontal} color="text-amber-500" />
+                <StatusSummaryCard label="Críticos" count={2} icon={AlertCircle} color="text-red-500" />
+            </div>
+
+            {/* Equipment List */}
+            <div className="space-y-4">
+                <EquipmentCard
+                    name="Arco Cirúrgico Siemens"
+                    location="Hospital Santa Lúcia - Unidade Asa Sul"
+                    status={EquipmentStatus.Ready}
+                    date="24/05/2024 08:00"
+                    room="Sala 04"
+                />
+                <EquipmentCard
+                    name="Laser Holmium 100W"
+                    location="Hospital de Base - Bloco Cirúrgico"
+                    status={EquipmentStatus.Pending}
+                    pendingAction
+                />
+                <EquipmentCard
+                    name="Torre de Vídeo 4K Stryker"
+                    location="Hospital Anchieta - Taguatinga"
+                    status={EquipmentStatus.Critical}
+                    criticalAction
+                />
+            </div>
+            <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:bg-slate-100 hover:border-slate-300 transition-all">
+                <Upload className="w-8 h-8 mb-2" />
+                <span className="font-bold text-sm">Registrar Novo Equipamento</span>
+            </div>
+        </div>
+    );
+}
+
+function EquipmentCard({ name, location, status, date, room, pendingAction, criticalAction }: {
+    name: string;
+    location: string;
+    status: EquipmentStatus;
+    date?: string;
+    room?: string;
+    pendingAction?: boolean;
+    criticalAction?: boolean;
+}) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    return (
+        <div className={`bg-white rounded-xl border border-slate-200 shadow-sm border-l-4 overflow-hidden transition-all ${status === EquipmentStatus.Ready ? 'border-l-emerald-500' :
+            status === EquipmentStatus.Pending ? 'border-l-amber-400' : 'border-l-red-500'
+            }`}>
+            <div
+                className="p-6 flex justify-between items-start cursor-pointer hover:bg-slate-50"
+                onClick={() => setIsExpanded(!isExpanded)}
+                role="button"
+                tabIndex={0}
+            >
+                <div className="flex gap-4">
+                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${status === EquipmentStatus.Ready ? 'bg-emerald-50 text-emerald-600' :
+                        status === EquipmentStatus.Pending ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600'
+                        }`}>
+                        <Package className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-lg text-slate-800">{name}</h4>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${status === EquipmentStatus.Ready ? 'bg-emerald-100 text-emerald-700' :
+                                status === EquipmentStatus.Pending ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                {status === EquipmentStatus.Ready ? 'Confirmado' : status === EquipmentStatus.Pending ? 'Pendente' : 'Crítico'}
+                            </span>
+                        </div>
+                        <p className="text-sm text-slate-500 flex items-center gap-1">
+                            <MapPin className="w-3 h-3" /> {location}
+                        </p>
+                    </div>
+                </div>
+                <div className="flex gap-2 items-center">
+                    <button className="text-xs font-bold px-3 py-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200" onClick={(e) => e.stopPropagation()}>Histórico</button>
+                    {criticalAction ? (
+                        <button className="text-xs font-bold px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700" onClick={(e) => e.stopPropagation()}>Ação Urgente</button>
+                    ) : (
+                        <button className="text-xs font-bold px-3 py-1.5 bg-primary-600 text-white rounded hover:bg-primary-700" onClick={(e) => e.stopPropagation()}>Salvar</button>
+                    )}
+                    {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400 ml-2" /> : <ChevronDown className="w-5 h-5 text-slate-400 ml-2" />}
+                </div>
+            </div>
+
+            {isExpanded && (
+                <div className="px-6 pb-6 border-t border-slate-100 mt-4 pt-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold text-slate-700">Reserva Confirmada?</span>
+                                {status === EquipmentStatus.Ready ? (
+                                    <div className="w-10 h-6 bg-emerald-500 rounded-full relative cursor-pointer"><div className="w-4 h-4 bg-white rounded-full absolute top-1 right-1 shadow-sm"></div></div>
+                                ) : (
+                                    <div className="w-10 h-6 bg-slate-200 rounded-full relative cursor-pointer"><div className="w-4 h-4 bg-white rounded-full absolute top-1 left-1 shadow-sm"></div></div>
+                                )}
+                            </div>
+                            {pendingAction && (
+                                <button className="w-full bg-primary-600 text-white text-xs font-bold py-2 rounded">Solicitar Reserva</button>
+                            )}
+                            {criticalAction && (
+                                <button className="w-full bg-red-600 text-white text-xs font-bold py-2 rounded">Solicitar Reserva Imediata</button>
+                            )}
+                            {status === EquipmentStatus.Ready && date && (
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Data/Hora</span>
+                                        <span className="text-xs font-medium">{date}</span>
+                                    </div>
+                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                                        <span className="text-[10px] text-slate-400 font-bold uppercase block">Sala</span>
+                                        <span className="text-xs font-medium">{room}</span>
+                                    </div>
+                                </div>
+                            )}
+                            {status !== EquipmentStatus.Ready && (
+                                <input type="text" placeholder="Nome do contato..." className="w-full text-xs p-2 border border-slate-200 rounded bg-slate-50" />
+                            )}
+                        </div>
+
+                        <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                            <h5 className="text-xs font-bold text-primary-600 uppercase flex items-center gap-2 mb-3">
+                                <Check className="w-4 h-4" /> Check-list Funcionamento
+                            </h5>
+                            <div className="space-y-2">
+                                <label className="flex items-center justify-between bg-white p-2 rounded border border-slate-100">
+                                    <span className="text-sm text-slate-600">Equipamento Testado</span>
+                                    <input type="checkbox" checked={status === EquipmentStatus.Ready} className="rounded text-primary-600" />
+                                </label>
+                                <label className="flex items-center justify-between bg-white p-2 rounded border border-slate-100">
+                                    <span className="text-sm text-slate-600">Higienizado</span>
+                                    <input type="checkbox" checked={status === EquipmentStatus.Ready} className="rounded text-primary-600" />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">Observações Logísticas</span>
+                            <textarea
+                                className="w-full h-24 text-sm p-3 border border-slate-200 rounded-lg bg-slate-50 resize-none focus:outline-none focus:border-primary-300"
+                                defaultValue={status === EquipmentStatus.Ready ? "Equipamento em perfeitas condições. Bateria reserva incluída no kit." : status === EquipmentStatus.Critical ? "Aguardando retorno da enfermeira chefe para alocação da sala." : ""}
+                                placeholder="Notas adicionais..."
+                            ></textarea>
+                        </div>
+                    </div>
+                </div>
+            );
+};
+
+            function TeamMemberCard({role, type, name, phone, status, pendingDocs}: {role: string; type: string; name: string; phone?: string; status: 'OK' | 'Warning'; pendingDocs?: boolean }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+            return (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                                <Users className="w-6 h-6" />
+                            </div>
+                            <span className={`absolute -bottom-1 -right-1 flex h-4 w-4 rounded-full border-2 border-white ${status === 'OK' ? 'bg-emerald-500' : 'bg-amber-400'}`}></span>
+                        </div>
+                        <div>
+                            <h3 className="font-semibold text-slate-900">{role}</h3>
+                            <p className="text-xs text-slate-500 uppercase font-medium">{type}</p>
+                        </div>
+                    </div>
+                    <div
+                        className="flex items-center gap-3"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
+                    >
+                        {status === 'OK' && (
+                            <>
+                                <span className="text-sm text-slate-600">Confirmou presença?</span>
+                                <div className="w-11 h-6 bg-primary-600 rounded-full relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                                    <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 shadow-sm"></div>
+                                </div>
+                            </>
+                        )}
+                        {status === 'Warning' && (
+                            <button className="text-sm font-medium text-primary-600 hover:underline" onClick={(e) => e.stopPropagation()}>Editar Alocação</button>
+                        )}
+                        {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400 ml-2" /> : <ChevronDown className="w-5 h-5 text-slate-400 ml-2" />}
+                    </div>
+                </div>
+                {isExpanded && (
+                    <div className="border-t border-slate-100">
+                        {status === 'OK' && (
+                            <div className="px-5 pb-5 pt-0">
+                                <div className="bg-slate-50 rounded-lg p-4 border border-slate-100">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-slate-400 uppercase font-bold tracking-tight">Nome Completo</span>
+                                            <span className="text-sm font-medium text-slate-700">{name}</span>
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-slate-400 uppercase font-bold tracking-tight">Telefone</span>
+                                            <span className="text-sm font-medium text-slate-700">{phone}</span>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4 flex gap-3">
+                                        <button className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-all">
+                                            <MapPin className="w-4 h-4" /> Enviar Localização
+                                        </button>
+                                        <button className="flex items-center gap-2 border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm font-medium py-2 px-4 rounded-lg transition-all">
+                                            <MessageSquare className="w-4 h-4" /> WhatsApp
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {pendingDocs && (
+                            <div className="px-5 pb-5">
+                                <div className="border-t border-slate-100 pt-4">
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
+                                        <FileText className="w-4 h-4" /> Documentação Pendente
+                                    </h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <div className="flex items-center justify-between p-3 bg-red-50 border border-red-100 rounded-lg">
+                                            <div className="flex items-center gap-2">
+                                                <AlertCircle className="w-5 h-5 text-red-500" />
+                                                <span className="text-sm font-medium text-red-700">CRM Ativo (Validação)</span>
+                                            </div>
+                                            <button className="text-[10px] font-bold uppercase tracking-widest text-red-600 hover:text-red-800">Regularizar</button>
+                                        </div>
+                                        <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-100 rounded-lg">
+                                            <div className="flex items-center gap-2">
+                                                <CheckCircle className="w-5 h-5 text-emerald-500" />
+                                                <span className="text-sm font-medium text-emerald-700">Seguro Profissional</span>
+                                            </div>
+                                            <CheckCircle className="w-4 h-4 text-emerald-500" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+            );
+}
+
+const TeamTab: React.FC = () => {
+    return (
+            <div className="space-y-6">
+                <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4 mb-8">
+                    <div>
+                        <h2 className="text-xl font-bold text-slate-800">Gestão de Equipe</h2>
+                        <p className="text-slate-500 text-sm mt-1">Controle de presença e documentação dos auxiliares cirúrgicos.</p>
+                    </div>
+                    <div className="md:text-right">
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Status Geral da Escala</span>
+                        <div className="flex items-center gap-2 mt-1 md:justify-end">
+                            <span className="flex h-3 w-3 rounded-full bg-amber-400"></span>
+                            <span className="text-sm font-medium text-amber-600">Aguardando Confirmações</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-4">
+                    <TeamMemberCard
+                        role="Instrumentador"
+                        type="Equipe Técnica"
+                        name="Marcos André Oliveira"
+                        phone="(11) 98765-4321"
+                        status="OK"
+                    />
+                    <TeamMemberCard
+                        role="Primeiro Auxiliar"
+                        type="Corpo Médico"
+                        name="Dra. Juliana"
+                        status="Warning"
+                        pendingDocs
+                    />
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="p-5 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="relative">
+                                    <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                                        <AlertCircle className="w-6 h-6" />
+                                    </div>
+                                    <span className="absolute -bottom-1 -right-1 flex h-4 w-4 rounded-full border-2 border-white bg-slate-300"></span>
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-slate-900">Segundo Auxiliar</h3>
+                                    <p className="text-xs text-slate-500 uppercase font-medium">Aguardando Escala</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" className="w-4 h-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500" />
+                                    <span className="text-sm font-medium text-slate-600">Confirmação de Escala</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div className="px-5 pb-5">
+                            <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-lg p-6 flex flex-col items-center justify-center text-center">
+                                <p className="text-sm text-slate-500 mb-3 font-medium">Nenhum profissional escalado para esta posição ainda.</p>
+                                <button className="bg-white border border-slate-300 px-4 py-2 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2">
+                                    <Upload className="w-4 h-4" />
+                                    Solicitar Substituição / Escala
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Logistics Flow */}
+                <div className="mt-8 bg-slate-900 rounded-xl p-6 text-white shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+                        <Share2 className="w-32 h-32" />
+                    </div>
+                    <div className="relative z-10">
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                            <Share2 className="w-5 h-5" /> Fluxo de Logística e Hospital
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
+                                        <Check className="w-3 h-3" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold">Escala enviada para hospital</span>
+                                        <span className="text-xs opacity-70 italic">Enviado em 24/05/2024 às 14:30</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-6 h-6 rounded-full bg-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                                        <Activity className="w-3 h-3 text-slate-900" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-sm font-semibold">Confirmado pela chefia de enfermagem</span>
+                                        <button className="mt-2 text-xs bg-white/10 hover:bg-white/20 py-1 px-3 rounded inline-flex items-center gap-2 w-fit">
+                                            Solicitar Confirmação
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
+                                <h4 className="text-xs font-bold uppercase tracking-widest mb-3 opacity-80">Hospital de Destino</h4>
+                                <div className="flex items-center gap-3">
+                                    <img className="w-12 h-12 rounded object-cover bg-white" src="https://via.placeholder.com/50" alt="Hospital" />
+                                    <div>
+                                        <p className="text-sm font-bold">Hospital Israelita Albert Einstein</p>
+                                        <p className="text-xs opacity-70">São Paulo - SP</p>
+                                    </div>
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2">
+                                    <Phone className="w-3 h-3" />
+                                    <span className="text-xs font-mono">(11) 2151-1233 (Centro Cirúrgico)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            );
+};
+
+
+            function TimelineStepCard({step, title, status, statusLabel, children, isLast}: {
+                step: number;
+            title: string;
+            status: 'CONCLUÍDO' | 'EM ANDAMENTO' | 'ATRASADO' | 'AGUARDANDO';
+            statusLabel: string;
+            children: React.ReactNode;
+            isLast?: boolean;
+}) {
+    const [isOpen, setIsOpen] = useState(false);
+
+    const getColors = () => {
+        switch (status) {
+            case 'CONCLUÍDO': return {border: 'border-l-emerald-500', badge: 'bg-emerald-100 text-emerald-700', text: 'text-emerald-600', circle: 'bg-emerald-500' };
+            case 'EM ANDAMENTO': return {border: 'border-l-amber-400', badge: 'bg-amber-100 text-amber-700', text: 'text-amber-600', circle: 'bg-amber-400' };
+            case 'ATRASADO': return {border: 'border-l-red-500', badge: 'bg-red-100 text-red-700', text: 'text-red-500', circle: 'bg-red-500' };
+            default: return {border: 'border-l-slate-300', badge: 'bg-slate-100 text-slate-600', text: 'text-slate-500', circle: 'bg-slate-300' };
+        }
+    };
+
+            const colors = getColors();
+
+            return (
+            <div className="relative pl-10 pb-8 last:pb-0">
+                {/* Timeline Line */}
+                {!isLast && <div className="absolute left-[19px] top-8 bottom-0 w-0.5 bg-slate-200"></div>}
+
+                {/* Number Bubble */}
+                <div className={`absolute left-0 top-0 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold shadow-sm z-10 ${colors.circle}`}>
+                    {status === 'CONCLUÍDO' ? <Check className="w-5 h-5" /> : step}
+                </div>
+
+                <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden transition-all ${colors.border} border-l-4`}>
+                    <div
+                        className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50"
+                        onClick={() => setIsOpen(!isOpen)}
+                        role="button"
+                        tabIndex={0}
+                    >
+                        <div>
+                            <h3 className="font-bold text-lg text-slate-800">{title}</h3>
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ${colors.text}`}>{statusLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${colors.badge}`}>{statusLabel}</span>
+                            {isOpen ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                        </div>
+                    </div>
+
+                    {isOpen && (
+                        <div className="px-5 pb-5 border-t border-slate-100 mt-2 pt-4">
+                            {children}
+                        </div>
+                    )}
+                </div>
+            </div>
+            );
+}
+
+const AnesthesiaTab: React.FC = () => {
+    // Helper for timeline steps
+
+
+            return (
+            <div className="space-y-6">
+                <div className="flex flex-col lg:flex-row gap-8">
+                    {/* Main Content - Timeline */}
+                    <div className="flex-1">
+                        <TimelineStepCard step={1} title="Profissionais" status="CONCLUÍDO" statusLabel="FINALIZADO">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase">Anestesista</label>
+                                    <select className="w-full mt-1 p-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 font-medium outline-none focus:ring-2 focus:ring-primary-500">
+                                        <option>Dr. Ricardo Santos</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase">Auxiliar de Anestesia</label>
+                                    <select className="w-full mt-1 p-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 font-medium outline-none focus:ring-2 focus:ring-primary-500">
+                                        <option>Enf. Marcos Lima</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </TimelineStepCard>
+
+                        <TimelineStepCard step={2} title="Financeiro" status="EM ANDAMENTO" statusLabel="EM ANDAMENTO">
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 flex items-center justify-between mb-6">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-700">Orçamento Apresentado</p>
+                                    <p className="text-xs text-slate-500">O paciente assinou a estimativa de custos?</p>
+                                </div>
+                                {/* Toggle */}
+                                <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-pointer">
+                                    <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 left-0.5 shadow-sm"></div>
+                                </div>
+                            </div>
+                            <div className="mb-6">
+                                <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Valor Estimado</label>
+                                <div className="relative">
+                                    <span className="absolute left-3 top-3 text-slate-400 text-sm font-bold">R$</span>
+                                    <input type="text" defaultValue="2.450,00" className="w-full pl-10 p-2.5 border border-slate-200 rounded-lg text-lg font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary-500 bg-white" />
+                                </div>
+                            </div>
+                            <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 flex flex-col items-center justify-center text-slate-400 hover:bg-slate-50 hover:border-slate-300 transition-all cursor-pointer">
+                                <FileText className="w-8 h-8 mb-2 text-slate-300" />
+                                <span className="text-xs font-bold uppercase tracking-wider">Upload PDF (Orçamento)</span>
+                            </div>
+                        </TimelineStepCard>
+
+                        <TimelineStepCard step={3} title="Follow-up" status="ATRASADO" statusLabel="PENDENTE">
+                            <div className="text-center py-4 text-slate-500">
+                                Conteúdo do Follow-up...
+                            </div>
+                        </TimelineStepCard>
+
+                        <TimelineStepCard step={4} title="Agenda" status="AGUARDANDO" statusLabel="FUTURO" isLast>
+                            <div className="text-center py-4 text-slate-500">
+                                Conteúdo da Agenda...
+                            </div>
+                        </TimelineStepCard>
+                    </div>
+
+                    {/* Right Sidebar - Log */}
+                    <div className="w-full lg:w-80 shrink-0">
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm h-full flex flex-col min-h-[600px]">
+                            <div className="p-4 border-b border-slate-100 flex justify-between items-center">
+                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                    <Clock className="w-4 h-4" /> Log de Atividades
+                                </h3>
+                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">Ao Vivo</span>
+                            </div>
+
+                            <div className="flex-1 p-6 relative">
+                                {/* Timeline Line */}
+                                <div className="absolute left-[29px] top-6 bottom-6 w-0.5 bg-slate-100"></div>
+
+                                <div className="space-y-8">
+                                    <div className="relative pl-6">
+                                        <div className="absolute left-0 top-1.5 w-2 h-2 bg-primary-600 rounded-full ring-4 ring-white"></div>
+                                        <span className="text-xs font-bold text-primary-600">10:45 AM</span>
+                                        <p className="text-sm font-bold text-slate-800 mt-0.5">Orçamento atualizado</p>
+                                        <p className="text-xs text-slate-500 mt-1">Dr. Ricardo alterou o valor estimado para R$ 2.450,00</p>
+                                    </div>
+
+                                    <div className="relative pl-6">
+                                        <div className="absolute left-0 top-1.5 w-2 h-2 bg-slate-300 rounded-full ring-4 ring-white"></div>
+                                        <span className="text-xs font-bold text-slate-400">09:15 AM</span>
+                                        <p className="text-sm font-bold text-slate-800 mt-0.5">Anestesista Atribuído</p>
+                                        <p className="text-xs text-slate-500 mt-1">Dr. Ricardo foi designado para o caso por Enf. Maria</p>
+                                    </div>
+
+                                    <div className="relative pl-6">
+                                        <div className="absolute left-0 top-1.5 w-2 h-2 bg-slate-300 rounded-full ring-4 ring-white"></div>
+                                        <span className="text-xs font-bold text-slate-400">Ontem, 16:30</span>
+                                        <p className="text-sm font-bold text-slate-800 mt-0.5">Caso Criado</p>
+                                        <p className="text-xs text-slate-500 mt-1">Integração automática do sistema de agendamento</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-4 border-t border-slate-100 bg-slate-50 rounded-b-xl">
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        placeholder="Adicionar nota..."
+                                        className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm shadow-sm focus:ring-2 focus:ring-primary-500 outline-none"
+                                    />
+                                    <button className="absolute right-2 top-2 text-primary-600 hover:text-primary-700">
+                                        <Send className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Footer Actions */}
+                <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 z-50 ml-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                    <div className="max-w-7xl mx-auto flex items-center justify-end gap-3 px-6">
+                        <button className="px-6 py-2.5 text-slate-500 text-sm font-bold hover:text-slate-700 transition-colors">
+                            Descartar Alterações
+                        </button>
+                        <button className="px-6 py-2.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-lg text-sm font-bold hover:bg-amber-100 flex items-center gap-2 transition-colors">
+                            <Flag className="w-4 h-4" /> Sinalizar Revisão
+                        </button>
+                        <button className="px-6 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 shadow-lg shadow-primary-600/20 transition-all">
+                            Salvar Alterações
+                        </button>
+                    </div>
+                </div>
+            </div>
+            );
+};
+
+            // Detailed Document Card for DocumentsTab
+            const DetailedDocumentCard: React.FC<{
+    status: 'valid' | 'critical' | 'pending';
+            title: string;
+            dateValue: string;
+            isExpired?: boolean;
+            hasFile?: boolean;
+            fileName?: string;
+            fileDate?: string;
+            showFluxo?: boolean;
+            showFollowUp?: boolean;
+}> = ({status, title, dateValue, isExpired, hasFile, fileName, fileDate, showFluxo, showFollowUp}) => {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+            const borderColor = status === 'valid' ? 'border-emerald-200' : 'border-red-200';
+            const textColor = status === 'valid' ? 'text-emerald-500' : 'text-red-500';
+            const statusText = status === 'valid' ? 'VALIDADO' : 'CRÍTICO';
+
+            return (
+            <div className="flex items-start gap-4">
+                {/* Status Icon Outside */}
+                <div className={`mt-6 w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-sm ${status === 'valid' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
+                    {status === 'valid' ? <Check className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
+                </div>
+
+                {/* Main Card */}
+                <div className={`flex-1 bg-white rounded-xl border ${borderColor} shadow-sm overflow-hidden`}>
+                    {/* Header */}
+                    <div
+                        className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => setIsExpanded(!isExpanded)}
+                        role="button"
+                        tabIndex={0}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div>
+                                <h4 className="font-bold text-lg text-slate-800">{title}</h4>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider ${textColor}`}>{statusText}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            {status === 'critical' && (
+                                <span className="bg-red-50 text-red-600 text-[10px] font-bold px-2 py-1 rounded uppercase border border-red-100">Atenção</span>
+                            )}
+                            {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                        </div>
+                    </div>
+
+                    {/* Body */}
+                    {isExpanded && (
+                        <div className="px-5 pb-6 border-t border-slate-100">
+                            {/* Main Inputs */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-1">Data de Validade</label>
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            defaultValue={dateValue}
+                                            className={`w-full pl-4 pr-10 py-2.5 border rounded-lg text-sm font-medium outline-none focus:ring-2 transition-all ${isExpired ? 'border-red-300 text-red-600 focus:ring-red-200 bg-red-50' : 'border-slate-200 text-slate-700 focus:ring-primary-100 focus:border-primary-400'}`}
+                                        />
+                                        <CalendarIcon className={`absolute right-3 top-2.5 w-5 h-5 ${isExpired ? 'text-red-400' : 'text-slate-400'}`} />
+                                    </div>
+                                    {isExpired && (
+                                        <p className="text-[10px] font-bold text-red-500 mt-1 flex items-center gap-1">
+                                            <AlertCircle className="w-3 h-3" /> VENCIDO NA DATA DA CIRURGIA
+                                        </p>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between md:justify-end gap-4 h-full pt-6">
+                                    <span className="text-sm font-medium text-slate-700">Paciente já enviou?</span>
+                                    {/* Toggle Switch */}
+                                    <div className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${status === 'valid' ? 'bg-primary-600' : 'bg-slate-300'}`}>
+                                        <div className={`w-5 h-5 bg-white rounded-full absolute top-0.5 shadow-sm transition-transform ${status === 'valid' ? 'translate-x-6' : 'translate-x-0.5'}`}></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* File Attachment */}
+                            {hasFile && (
+                                <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-primary-100 p-2 rounded text-primary-600">
+                                            <FileText className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-800">{fileName}</p>
+                                            <p className="text-xs text-slate-500">{fileDate}</p>
+                                        </div>
+                                    </div>
+                                    <button className="text-sm font-bold text-primary-600 hover:text-primary-700 hover:underline">Visualizar</button>
+                                </div>
+                            )}
+
+                            {/* Request Flow */}
+                            {showFluxo && (
+                                <div className="mt-6 border border-slate-200 rounded-lg p-4 bg-slate-50/50">
+                                    <h5 className="text-xs font-bold text-slate-600 uppercase mb-4">Fluxo de Solicitação</h5>
+                                    <div className="flex flex-col md:flex-row gap-4 items-end">
+                                        <div className="flex-1 w-full">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Prazo de Resposta</label>
+                                            <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700">
+                                                <option>24 horas</option>
+                                                <option>48 horas</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex-1 w-full">
+                                            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Lembrete de Follow-up</label>
+                                            <select className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700">
+                                                <option>A cada 12h</option>
+                                                <option>Diário</option>
+                                            </select>
+                                        </div>
+                                        <button className="w-full md:w-auto px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 flex items-center justify-center gap-2">
+                                            <Send className="w-4 h-4" /> Solicitar ao Paciente
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Follow Up Section */}
+                            {showFollowUp && (
+                                <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="bg-amber-100 p-2 rounded-full text-amber-600">
+                                            <Clock className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-amber-800 uppercase">Seção de Follow-up</p>
+                                            <p className="text-sm text-amber-700">Aguardando resposta do paciente via SMS/WhatsApp</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-amber-800 uppercase mr-2">Respondeu?</span>
+                                        <button className="px-4 py-1.5 bg-white border border-amber-200 text-amber-700 text-xs font-bold rounded hover:bg-amber-100">SIM</button>
+                                        <button className="px-4 py-1.5 bg-white border border-amber-200 text-amber-700 text-xs font-bold rounded hover:bg-amber-100 opacity-50">NÃO</button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </div>
+            );
+}
+
+const DocumentsTab: React.FC = () => {
+    return (
+            <div className="flex flex-col lg:flex-row gap-8">
+                {/* Main Content */}
+                <div className="flex-1 space-y-6">
+                    <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                            <FileText className="w-6 h-6 text-primary-600" /> Gestão de Documentos
+                        </h3>
+                        <span className="bg-slate-100 text-slate-600 text-sm font-bold px-3 py-1 rounded-full">2 de 4 Documentos Conferidos</span>
+                    </div>
+
+                    <div className="space-y-6">
+                        <DetailedDocumentCard
+                            status="valid"
+                            title="TCLE - Termo de Consentimento"
+                            dateValue="31/12/2024"
+                            hasFile={true}
+                            fileName="tcle_paciente_assinado.pdf"
+                            fileDate="Enviado em 15/10/2023"
+                        />
+
+                        <DetailedDocumentCard
+                            status="critical"
+                            title="Avaliação de Risco Cirúrgico"
+                            dateValue="20/10/2023"
+                            isExpired={true}
+                            showFluxo={true}
+                            showFollowUp={true}
+                        />
+                    </div>
+                </div>
+
+                {/* Sidebar History */}
+                <div className="w-full lg:w-80 shrink-0">
+                    <div className="bg-white rounded-xl border border-slate-200 p-6 h-full">
+                        <h4 className="font-bold text-slate-800 text-sm mb-6 flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-slate-400" /> Histórico de Documentos
+                        </h4>
+
+                        <div className="relative space-y-8 pl-2">
+                            {/* Timeline Line */}
+                            <div className="absolute left-[13px] top-2 bottom-0 w-0.5 bg-slate-100"></div>
+
+                            {/* Event 1 */}
+                            <div className="relative pl-8">
+                                <div className="absolute left-[9px] top-1.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white ring-1 ring-emerald-100"></div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Hoje, 14:30</span>
+                                <p className="text-sm font-bold text-slate-800 mt-0.5">TCLE Validado</p>
+                                <p className="text-xs text-slate-500 mt-1">Conferido por Dr. Ricardo Santos após revisão de validade.</p>
+                            </div>
+
+                            {/* Event 2 */}
+                            <div className="relative pl-8">
+                                <div className="absolute left-[9px] top-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white ring-1 ring-red-100"></div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Ontem, 10:15</span>
+                                <p className="text-sm font-bold text-slate-800 mt-0.5">Alerta de Validade</p>
+                                <p className="text-xs text-slate-500 mt-1">Risco Cirúrgico identificado como vencido para a data da cirurgia.</p>
+                            </div>
+
+                            {/* Event 3 */}
+                            <div className="relative pl-8">
+                                <div className="absolute left-[9px] top-1.5 w-2.5 h-2.5 bg-primary-500 rounded-full border-2 border-white ring-1 ring-primary-100"></div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase">Ontem, 09:30</span>
+                                <p className="text-sm font-bold text-slate-800 mt-0.5">Documentos Solicitados</p>
+                                <p className="text-xs text-slate-500 mt-1">Sistema enviou link de upload para o paciente (WhatsApp).</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-12 pt-4 border-t border-slate-100">
+                            <div className="relative">
+                                <input type="text" placeholder="Adicionar observação..." className="w-full pl-3 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                                <button className="absolute right-2 top-2 text-primary-600 hover:text-primary-700">
+                                    <Send className="w-3 h-3" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            );
+};
+
+            function OpmeCard({item, description, supplier, qty, value, status}: {
+                item: string;
+            description: string;
+            supplier: string;
+            qty: number;
+            value: string;
+            status: 'Cotado' | 'Pendente' | 'Autorizado';
+}) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+            return (
+            <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden border-l-4 ${status === 'Autorizado' ? 'border-l-emerald-500' :
+                status === 'Cotado' ? 'border-l-primary-500' : 'border-l-amber-500'
+                }`}>
+                <div
+                    className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    role="button"
+                    tabIndex={0}
+                >
+                    <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${status === 'Autorizado' ? 'bg-emerald-50 text-emerald-600' :
+                            status === 'Cotado' ? 'bg-primary-50 text-primary-600' : 'bg-amber-50 text-amber-600'
+                            }`}>
+                            <Package className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-800">{item}</h4>
+                            <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-xs text-slate-500">{description}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded font-bold uppercase">{supplier}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <div className="text-right mr-2">
+                            <p className="text-sm font-bold text-slate-800">{value}</p>
+                            <span className={`text-[10px] font-bold uppercase block ${status === 'Autorizado' ? 'text-emerald-600' :
+                                status === 'Cotado' ? 'text-primary-600' : 'text-amber-600'
+                                }`}>{status}</span>
+                        </div>
+                        {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                    </div>
+                </div>
+
+                {isExpanded && (
+                    <div className="px-5 pb-5 border-t border-slate-100 pt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Quantidade</label>
+                                <input type="number" defaultValue={qty} className="w-full p-2 border border-slate-200 rounded text-sm font-bold text-slate-700" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Valor Unitário</label>
+                                <input type="text" defaultValue={value} className="w-full p-2 border border-slate-200 rounded text-sm font-bold text-slate-700" />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Fornecedor</label>
+                                <select className="w-full p-2 border border-slate-200 rounded text-sm font-bold text-slate-700 bg-white">
+                                    <option>{supplier}</option>
+                                    <option>Outro Fornecedor</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div className="mt-4 flex justify-end gap-2">
+                            <button className="px-4 py-2 text-slate-500 text-xs font-bold hover:bg-slate-50 rounded-lg transition-colors">Histórico</button>
+                            <button className="px-4 py-2 bg-primary-600 text-white text-xs font-bold rounded-lg hover:bg-primary-700 transition-colors">Atualizar Cotação</button>
+                        </div>
+                    </div>
+                )}
+            </div>
+            );
+}
+
+const OpmeTab: React.FC = () => {
+    return (
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-bold text-slate-800">Gestão de OPME</h3>
+                        <p className="text-sm text-slate-500">Cotações e autorizações de materiais especiais.</p>
+                    </div>
+                    <button className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-primary-700 flex items-center gap-2">
+                        <Plus className="w-4 h-4" /> Nova Solicitação
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <StatusSummaryCard label="Total Itens" count={3} icon={Package} color="text-primary-600" />
+                    <StatusSummaryCard label="Autorizados" count={1} icon={Check} color="text-emerald-500" />
+                    <StatusSummaryCard label="Em Cotação" count={2} icon={Activity} color="text-amber-500" />
+                </div>
+
+                <div className="space-y-4">
+                    <OpmeCard
+                        item="Prótese de Quadril Híbrida"
+                        description="Componente Acetabular + Femural"
+                        supplier="ProHosp Materiais"
+                        qty={1}
+                        value="R$ 12.500,00"
+                        status="Cotado"
+                    />
+                    <OpmeCard
+                        item="Cimento Ósseo com Antibiótico"
+                        description="40g - Alta Viscosidade"
+                        supplier="MedTech Solutions"
+                        qty={2}
+                        value="R$ 450,00"
+                        status="Autorizado"
+                    />
+                </div>
+            </div>
+            );
+};
+
+export const CaseDetails: React.FC = () => {
+    const {id} = useParams();
+            const [activeTab, setActiveTab] = useState('Visão Geral');
+            const navigate = useNavigate();
+
+            return (
+            <div className="space-y-6 pb-20">
+                {/* Header Area */}
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 mb-4">
+                    <div>
+                        <h1 className="text-2xl font-bold text-slate-800">Detalhes da Cirurgia</h1>
+                        <p className="text-xs text-slate-500 mt-1">ID da Operação: #OPS-2023-9942</p>
+                    </div>
+                    <div className="flex gap-2">
+                        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
+                            <Printer className="w-4 h-4" /> Exportar PDF
+                        </button>
+                        <button className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-bold hover:bg-primary-700 shadow-lg shadow-primary-600/20 transition-all">
+                            <FileText className="w-4 h-4" /> Relatório Completo
+                        </button>
+                    </div>
+                </div>
+
+                {/* Patient Card */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                <Users className="w-7 h-7" />
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Paciente</span>
+                                <h2 className="text-2xl font-bold text-slate-800 leading-tight">João da Silva Medeiros</h2>
+                                <div className="flex items-center gap-4 text-xs text-slate-500 mt-1">
+                                    <span className="flex items-center gap-1"><Package className="w-3 h-3" /> Artroplastia de Quadril</span>
+                                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> Hospital Albert Einstein</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-center min-w-[240px]">
+                            <p className="text-[10px] font-bold text-primary-600 uppercase tracking-widest mb-1">Contagem Regressiva</p>
+                            <div className="text-2xl font-bold text-primary-700 font-mono">02d 14h 30m</div>
+                            <p className="text-[10px] text-slate-400 mt-1">Agendado: 24 Set 2023 - 08:30</p>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Navigation Tabs (Modified) */}
+                <div className="flex items-center gap-1 overflow-x-auto pb-2 no-scrollbar bg-slate-100/50 p-1.5 rounded-xl border border-slate-200/50 mb-6">
+                    {['Visão Geral', 'Pedido Médico', 'Equipamentos', 'Anestesia', 'Equipe', 'Documentos', 'OPME'].map((tab) => (
+                        <TabButton
+                            key={tab}
+                            active={activeTab === tab}
+                            label={tab}
+                            onClick={() => setActiveTab(tab)}
+                        />
+                    ))}
+                </div>
+
+                {/* Tab Content */}
+                <div className="animate-fade-in">
+                    {activeTab === 'Visão Geral' && <OverviewTab />}
+                    {activeTab === 'Pedido Médico' && <MedicalOrderTab />}
+                    {activeTab === 'Equipamentos' && <EquipmentsTab />}
+                    {activeTab === 'Equipe' && <TeamTab />}
+                    {activeTab === 'Anestesia' && <AnesthesiaTab />}
+                    {activeTab === 'Documentos' && <DocumentsTab />}
+                    {activeTab === 'OPME' && <OpmeTab />}
+                </div>
+            </div>
+            );
+};
