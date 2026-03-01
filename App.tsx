@@ -11,7 +11,9 @@ import { Patients } from './pages/Patients';
 import { PatientDetail } from './pages/PatientDetail';
 import { Doctors } from './pages/Doctors';
 import { DoctorDetail } from './pages/DoctorDetail';
+import { Settings } from './pages/Settings';
 import { DarkModeProvider } from './contexts/DarkModeContext';
+import { Toaster } from 'react-hot-toast';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
@@ -39,6 +41,13 @@ const App: React.FC = () => {
     <DarkModeProvider>
       <HashRouter>
         <Layout>
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              className: 'dark:bg-slate-800 dark:text-white',
+              duration: 4000,
+            }}
+          />
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
@@ -49,6 +58,7 @@ const App: React.FC = () => {
             <Route path="/doctors/:id" element={<DoctorDetail />} />
             <Route path="/case/:id" element={<CaseDetails />} />
             <Route path="/new-order" element={<NewOrder />} />
+            <Route path="/settings/*" element={<Settings />} />
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </Layout>

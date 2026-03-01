@@ -11,6 +11,9 @@
 orientacoes-projeto/
 ├── AGENT_INSTRUCTIONS.md   ← Este arquivo (leia sempre primeiro)
 ├── pacientes.md            ← Módulo de pacientes (✅ documentado)
+├── configuracoes.md        ← Módulo de configurações (Hub)
+├── configuracoes-clinica.md ← Configurações de Identidade da Clínica
+├── hospitais-parceiros.md  ← Hospitais Parceiros e Contatos Setoriais
 ├── agenda.md               ← (criar quando o módulo for implementado)
 ├── dashboard.md            ← (criar quando o módulo for implementado)
 ├── financeiro.md           ← (criar quando o módulo for implementado)
@@ -33,6 +36,10 @@ orientacoes-projeto/
 | `hooks/usePatients.ts` | `orientacoes-projeto/pacientes.md` |
 | `types.ts` → interface `PatientV2` | `orientacoes-projeto/pacientes.md` |
 | Migration na tabela `patients_v2` | `orientacoes-projeto/pacientes.md` → Seção 3 |
+| `pages/Settings.tsx` | `orientacoes-projeto/configuracoes.md` |
+| `components/settings/ClinicSettings.tsx` | `orientacoes-projeto/configuracoes-clinica.md` |
+| `components/settings/HospitalSettings.tsx` | `orientacoes-projeto/hospitais-parceiros.md` |
+| `components/settings/*` (Outros) | `orientacoes-projeto/configuracoes.md` |
 | `pages/Calendar.tsx` ou agenda | `orientacoes-projeto/agenda.md` |
 | `pages/Dashboard.tsx` | `orientacoes-projeto/dashboard.md` |
 | Qualquer hook em `hooks/` | `.md` do módulo que usa esse hook |
@@ -246,6 +253,9 @@ useNome() → Supabase
 |--------|------|-------------|--------------|
 | **Pacientes** | `pages/Patients.tsx` | ✅ `pacientes.md` | ✅ Produção |
 | **Detalhe Paciente** | `pages/PatientDetail.tsx` | ✅ `pacientes.md` | ✅ Produção |
+| **Configurações (Hub)**| `pages/Settings.tsx` | ✅ `configuracoes.md` | 🔄 Em progresso |
+| **Clinic Settings** | `components/settings/ClinicSettings.tsx` | ✅ `configuracoes-clinica.md` | ✅ Parcial |
+| **Hospital Settings** | `components/settings/HospitalSettings.tsx`| ✅ `hospitais-parceiros.md` | ✅ Parcial |
 | **Agenda** | `pages/Calendar.tsx` | ❌ a documentar | 🔄 Em progresso |
 | **Dashboard** | `pages/Dashboard.tsx` | ❌ a documentar | 🔄 Em progresso |
 | **Financeiro** | `pages/NewOrder.tsx` | ❌ a documentar | 🔄 Em progresso |

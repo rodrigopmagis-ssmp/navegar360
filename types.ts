@@ -114,7 +114,32 @@ export interface HealthInsurer {
   id: string;
   clinic_id: string;
   name: string;
+  legal_name?: string;
+  cnpj?: string;
   ans_code?: string;
+  status: 'ativo' | 'inativo';
+  notes?: string;
+  zip_code?: string;
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  created_at: string;
+  updated_at?: string;
+  insurer_contacts?: HealthInsurerContact[];
+}
+
+export interface HealthInsurerContact {
+  id: string;
+  clinic_id: string;
+  insurer_id: string;
+  name: string;
+  role?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
   created_at: string;
 }
 

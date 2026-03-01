@@ -5,7 +5,7 @@ import {
     FileText, Plus, Weight, ArrowDownUp, AlertTriangle,
     ClipboardList, CheckCircle2, History, Edit2,
     Stethoscope, Heart, Archive, Users2, Activity,
-    XCircle
+    XCircle, Info
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { PatientV2, MedicalRecord } from '../types';
@@ -146,13 +146,13 @@ const PatientSidebar: React.FC<{
 };
 
 // ── Tab: Atendimento ─────────────────────────────────────────────────────────
-const AtendimentoTab: React.FC<{ records: MedicalRecord[] }> = ({ records }) => (
+const AtendimentoTab: React.FC<{ records: MedicalRecord[], onNewRecord: () => void }> = ({ records, onNewRecord }) => (
     <div className="space-y-5">
         <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <History className="w-4 h-4 text-primary-500" /> Histórico de Atendimentos
             </h3>
-            <button className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-colors">
+            <button onClick={onNewRecord} className="flex items-center gap-1.5 px-4 py-2 bg-primary-600 text-white text-xs font-bold rounded-lg shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-colors">
                 <Plus className="w-3.5 h-3.5" /> Novo Registro
             </button>
         </div>
@@ -244,6 +244,8 @@ export const PatientDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<TabId>('atendimento');
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const [isActionModalOpen, setIsActionModalOpen] = useState(false);
+    const [isConsultModalOpen, setIsConsultModalOpen] = useState(false);
 
     const fetchData = async () => {
         try {
@@ -327,7 +329,7 @@ export const PatientDetail: React.FC = () => {
 
                     {/* Tab Content */}
                     <div className="p-6">
-                        {activeTab === 'atendimento' && <AtendimentoTab records={records} />}
+                        {activeTab === 'atendimento' && <AtendimentoTab records={records} onNewRecord={() => setIsActionModalOpen(true)} />}
                         {activeTab === 'prontuario' && <PlaceholderTab icon={ClipboardList} label="Prontuário" />}
                         {activeTab === 'relacionamento' && <PlaceholderTab icon={Users2} label="Relacionamento" />}
                         {activeTab === 'arquivos' && <PlaceholderTab icon={Archive} label="Arquivos" />}
@@ -343,6 +345,83 @@ export const PatientDetail: React.FC = () => {
                     onSuccess={fetchData}
                     patientToEdit={patient}
                 />
+            )}
+
+            {/* Action Modal */}
+            {isActionModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-[500px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <h3 className="text-xl font-bold text-slate-800 dark:text-white">
+                                Novo Registro
+                            </h3>
+                            <button
+                                onClick={() => setIsActionModalOpen(false)}
+                                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                                <XCircle className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-slate-500 mb-2">Qual tipo de registro deseja registrar para {patient.full_name}?</p>
+
+                            <button
+                                onClick={() => {
+                                    setIsActionModalOpen(false);
+                                    setIsConsultModalOpen(true);
+                                }}
+                                className="w-full text-left p-5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group flex gap-4 items-center"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center text-primary-600 shrink-0 group-hover:scale-110 transition-transform">
+                                    <Stethoscope className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 dark:text-white text-base">Consulta Clínica</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Registrar prescrições, evolução clínica, atestados e anamnese.</p>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setIsActionModalOpen(false);
+                                    navigate('/new-order', { state: { patientId: patient.id } });
+                                }}
+                                className="w-full text-left p-5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group flex gap-4 items-center"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 shrink-0 group-hover:scale-110 transition-transform">
+                                    <Heart className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="font-bold text-slate-800 dark:text-white text-base">Cirurgia / Procedimento</h4>
+                                    <p className="text-xs text-slate-500 mt-1">Criar um novo Pedido Médico Detalhado (OPME, Equipamentos, etc).</p>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Dev Notification Modal: Consulta */}
+            {isConsultModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-sm shadow-2xl p-6 text-center animate-in zoom-in-95 duration-200">
+                        <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 mx-auto mb-4">
+                            <Info className="w-8 h-8" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                            Em Desenvolvimento
+                        </h3>
+                        <p className="text-sm text-slate-500 mb-6">
+                            A funcionalidade de registro de <strong>Consulta Clínica</strong> estará disponível nas próximas versões do sistema.
+                        </p>
+                        <button
+                            onClick={() => setIsConsultModalOpen(false)}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors"
+                        >
+                            Entendido
+                        </button>
+                    </div>
+                </div>
             )}
         </div>
     );
