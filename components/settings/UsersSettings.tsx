@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, ShieldCheck, Mail, Clock, CheckCircle, AlertTriangle, MoreVertical, Edit, Search, Plus, Filter, Loader2, X, Shield } from 'lucide-react';
+import { Users, ShieldCheck, Mail, Clock, CheckCircle, AlertTriangle, Search, Plus, Loader2, X, Shield, Send, Copy, Check, Link2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { UserClinic } from '../../types';
@@ -17,6 +17,21 @@ export const UsersSettings: React.FC = () => {
     const [selectedMember, setSelectedMember] = useState<any | null>(null);
     const [permissionsForm, setPermissionsForm] = useState<Record<string, boolean>>({});
     const [savingPermissions, setSavingPermissions] = useState(false);
+
+    // Modal Invite
+    const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRole, setInviteRole] = useState<'technician' | 'admin'>('technician');
+    const [invitePermissions, setInvitePermissions] = useState({
+        can_create_case: true,
+        can_delete_schedule: false,
+        can_access_reports: true,
+        can_manage_users: false,
+        can_view_financial: false,
+    });
+    const [inviting, setInviting] = useState(false);
+    const [inviteLink, setInviteLink] = useState<string | null>(null);
+    const [linkCopied, setLinkCopied] = useState(false);
 
     useEffect(() => {
         if (selectedClinic) {
@@ -128,6 +143,56 @@ export const UsersSettings: React.FC = () => {
 
     const filteredMembers = members.filter(m => m.status === activeTab && (m.profiles?.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || m.role?.toLowerCase().includes(searchQuery.toLowerCase())));
 
+    const handleInvite = async () => {
+        if (!inviteEmail.trim() || !selectedClinic) return;
+        setInviting(true);
+        setInviteLink(null);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const response = await fetch(
+                `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token}`,
+                    },
+                    body: JSON.stringify({
+                        email: inviteEmail.trim().toLowerCase(),
+                        clinic_id: selectedClinic.clinic_id,
+                        role: inviteRole,
+                        permissions: invitePermissions,
+                        invited_by: user?.id,
+                    }),
+                }
+            );
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Erro ao gerar convite');
+            setInviteLink(result.invite_link);
+            toast.success('Convite gerado com sucesso!');
+            fetchMembers();
+        } catch (error: any) {
+            toast.error(error.message || 'Erro ao enviar convite.');
+        } finally {
+            setInviting(false);
+        }
+    };
+
+    const handleCopyLink = () => {
+        if (!inviteLink) return;
+        navigator.clipboard.writeText(inviteLink);
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
+    };
+
+    const resetInviteModal = () => {
+        setInviteEmail('');
+        setInviteRole('technician');
+        setInvitePermissions({ can_create_case: true, can_delete_schedule: false, can_access_reports: true, can_manage_users: false, can_view_financial: false });
+        setInviteLink(null);
+        setIsInviteModalOpen(false);
+    };
+
     return (
         <div className="flex flex-col space-y-6">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4">
@@ -141,6 +206,13 @@ export const UsersSettings: React.FC = () => {
                     </p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
+                    <button
+                        onClick={() => setIsInviteModalOpen(true)}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm shadow-primary-600/20 whitespace-nowrap"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Convidar Usuário
+                    </button>
                     <div className="relative flex-1 md:flex-none md:w-64">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <input
@@ -261,6 +333,113 @@ export const UsersSettings: React.FC = () => {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* ─── Modal de Convite ─── */}
+            {isInviteModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                <Send className="w-5 h-5 text-primary-600" />
+                                Convidar Usuário
+                            </h2>
+                            <button onClick={resetInviteModal} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-full transition-colors" title="Fechar">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-5">
+                            {/* E-mail */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1.5">E-mail do convidado</label>
+                                <div className="relative">
+                                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="email"
+                                        value={inviteEmail}
+                                        onChange={e => setInviteEmail(e.target.value)}
+                                        placeholder="nome@exemplo.com"
+                                        disabled={!!inviteLink}
+                                        className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-50 disabled:text-slate-400"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Papel */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1.5">Papel na clínica</label>
+                                <select
+                                    value={inviteRole}
+                                    onChange={e => setInviteRole(e.target.value as 'technician' | 'admin')}
+                                    disabled={!!inviteLink}
+                                    className="w-full py-2.5 px-3 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-50"
+                                    title="Papel na clínica"
+                                >
+                                    <option value="technician">Técnico</option>
+                                    <option value="admin">Administrador</option>
+                                </select>
+                            </div>
+
+                            {/* Permissões iniciais */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Permissões iniciais</label>
+                                <div className="space-y-2">
+                                    {[
+                                        { key: 'can_create_case', label: 'Criar cirurgias' },
+                                        { key: 'can_access_reports', label: 'Acessar relatórios' },
+                                        { key: 'can_delete_schedule', label: 'Excluir agendamentos' },
+                                        { key: 'can_view_financial', label: 'Ver financeiro' },
+                                        { key: 'can_manage_users', label: 'Gerenciar usuários' },
+                                    ].map(toggle => (
+                                        <label key={toggle.key} className={`flex items-center gap-3 p-2.5 border rounded-lg cursor-pointer transition-colors ${!!inviteLink ? 'opacity-50 pointer-events-none' : 'hover:bg-slate-50'} border-slate-200`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!invitePermissions[toggle.key as keyof typeof invitePermissions]}
+                                                onChange={e => setInvitePermissions(prev => ({ ...prev, [toggle.key]: e.target.checked }))}
+                                                className="w-4 h-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
+                                            />
+                                            <span className="text-sm text-slate-700">{toggle.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Link gerado */}
+                            {inviteLink && (
+                                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Link2 className="w-4 h-4 text-emerald-600" />
+                                        <p className="text-sm font-bold text-emerald-800">Link de acesso gerado!</p>
+                                    </div>
+                                    <p className="text-xs text-emerald-700 mb-3">Copie e envie este link para o usuário. Ele expira em 24 horas.</p>
+                                    <button
+                                        onClick={handleCopyLink}
+                                        className="w-full flex items-center justify-center gap-2 py-2 px-4 text-sm font-bold rounded-lg border transition-colors bg-white border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                                    >
+                                        {linkCopied ? <><Check className="w-4 h-4" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar Link</>}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+                            <button onClick={resetInviteModal} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-lg transition-colors">
+                                {inviteLink ? 'Fechar' : 'Cancelar'}
+                            </button>
+                            {!inviteLink && (
+                                <button
+                                    onClick={handleInvite}
+                                    disabled={inviting || !inviteEmail.trim()}
+                                    className="px-4 py-2 text-sm font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2 rounded-lg transition-colors"
+                                >
+                                    {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                    Gerar Convite
+                                </button>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
 
