@@ -107,18 +107,14 @@ const MODULES = [
 
 const SettingsHub: React.FC = () => {
     const navigate = useNavigate();
-    const { userClinics, selectedClinic } = useAuth();
-
-    const currentPermission = useMemo(() => {
-        return userClinics.find(uc => uc.clinic_id === selectedClinic?.clinic_id)?.permissions || {};
-    }, [userClinics, selectedClinic]);
+    const { permissions } = useAuth();
 
     const availableModules = useMemo(() => {
         return MODULES.filter(m => {
-            if (m.id === 'users') return currentPermission.can_manage_users;
+            if (m.id === 'users') return permissions.can_manage_users;
             return true;
         });
-    }, [currentPermission]);
+    }, [permissions]);
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-4 animate-in fade-in duration-500">
@@ -146,18 +142,14 @@ const SettingsHub: React.FC = () => {
 export const Settings: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { userClinics, selectedClinic } = useAuth();
-
-    const currentPermission = useMemo(() => {
-        return userClinics.find(uc => uc.clinic_id === selectedClinic?.clinic_id)?.permissions || {};
-    }, [userClinics, selectedClinic]);
+    const { permissions } = useAuth();
 
     const availableModules = useMemo(() => {
         return MODULES.filter(m => {
-            if (m.id === 'users') return currentPermission.can_manage_users;
+            if (m.id === 'users') return permissions.can_manage_users;
             return true;
         });
-    }, [currentPermission]);
+    }, [permissions]);
 
     // Determina o módulo ativo baseado na URL
     const activeModule = availableModules.find(m => location.pathname.includes(m.path));
