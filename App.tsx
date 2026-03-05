@@ -1,5 +1,5 @@
 import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
 import { Login } from './pages/Login';
@@ -38,12 +38,14 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const location = useLocation();
+  const isHome = location.pathname === '/';
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f6f6f8] dark:bg-slate-950 transition-colors">
       <Topbar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={`flex-1 overflow-y-auto ${isHome ? 'p-0' : 'p-6'}`}>
           {children}
         </main>
       </div>
@@ -72,7 +74,7 @@ const AppRoutes = () => {
                 <Route path="/new-order" element={<NewOrder />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/settings/*" element={<Settings />} />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/" element={<Home />} />
               </Routes>
             </Layout>
           </ProtectedRoute>
