@@ -63,6 +63,7 @@ export interface PatientV2 {
   father_name?: string;
   mother_name?: string;
   rg_issuer?: string;
+  medical_record_number?: string;
   status: 'ativo' | 'inativo';
   lgpd_consent: boolean;
   lgpd_consent_at?: string;
@@ -172,6 +173,27 @@ export interface PatientInsurance {
   insurance_plans?: InsurancePlan;
 }
 
+export type DocumentType =
+  | 'exames'
+  | 'pedido_medico'
+  | 'laudo'
+  | 'risco_cirurgico'
+  | 'termo_consentimento'
+  | 'documento_acompanhante'
+  | 'lista_medicamentos'
+  | 'personalizado';
+
+export interface OrderDocument {
+  id: string;
+  type: DocumentType;
+  custom_name?: string;
+  file_path?: string;
+  is_annexed_locally: boolean;
+  valid_until?: string;
+  has_no_expiry: boolean;
+  file?: File; // For local preview/upload
+}
+
 export interface MedicalRecord {
   id: string;
   clinic_id: string;
@@ -231,4 +253,37 @@ export interface Equipment {
   tested: boolean;
   sanitized: boolean;
   notes?: string;
+}
+
+export interface OrderOpme {
+  id: string;
+  order_id?: string;
+  description: string;
+  quantity: number;
+  suggested_vendor?: string;
+  manufacturer?: string;
+  supplier?: string;
+  is_authorized?: boolean;
+  authorized_value?: number;
+  authorized_supplier_id?: string;
+  created_at?: string;
+}
+
+export interface OrderEquipment {
+  id: string;
+  name: string;
+  notes?: string;
+}
+
+export interface OrderParticipant {
+  id: string;
+  order_id?: string;
+  team_role_id: string;
+  professional_id?: string;
+  status?: 'pending' | 'ready' | 'waived' | 'not_available';
+  created_at?: string;
+
+  // Joins
+  protocols?: { name: string };
+  doctors?: { full_name: string; council?: string; council_number?: string };
 }

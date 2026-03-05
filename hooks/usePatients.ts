@@ -12,7 +12,21 @@ export const usePatients = () => {
             setLoading(true);
             const { data, error } = await supabase
                 .from('patients_v2')
-                .select('*')
+                .select(`
+                    *,
+                    patient_insurances (
+                        id,
+                        card_number,
+                        valid_until,
+                        is_primary,
+                        insurance_plans (
+                            plan_name,
+                            health_insurers (
+                                name
+                            )
+                        )
+                    )
+                `)
                 .order('full_name', { ascending: true });
 
             if (error) throw error;

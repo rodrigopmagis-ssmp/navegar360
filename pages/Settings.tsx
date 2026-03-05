@@ -1,7 +1,8 @@
 import React from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Building2, Bell, Shield, Sliders, ArrowLeft, LayoutList, Users, Building, FileSignature } from 'lucide-react';
+import { Building2, Bell, Shield, Sliders, ArrowLeft, LayoutList, Users, Building, FileSignature, ClipboardList } from 'lucide-react';
 import { ClinicSettings } from '../components/settings/ClinicSettings';
+import { ProtocolsSettings } from '../components/settings/ProtocolsSettings';
 import { FieldsSettings } from '../components/settings/FieldsSettings';
 import { UsersSettings } from '../components/settings/UsersSettings';
 import { NotificationSettings } from '../components/settings/NotificationSettings';
@@ -91,6 +92,16 @@ const MODULES = [
         bgColor: 'bg-cyan-50 dark:bg-cyan-900/20',
         component: InsurerSettings
     },
+    {
+        id: 'protocols',
+        path: '/settings/protocols',
+        label: 'Protocolos Cirúrgicos',
+        description: 'Configure estágios e ações para acompanhamento de equipamentos, equipe e documentos.',
+        icon: ClipboardList,
+        color: 'text-rose-600 dark:text-rose-400',
+        bgColor: 'bg-rose-50 dark:bg-rose-900/20',
+        component: ProtocolsSettings
+    },
 ];
 
 const SettingsHub: React.FC = () => {
@@ -166,15 +177,16 @@ export const Settings: React.FC = () => {
                 <Routes>
                     <Route path="/" element={<SettingsHub />} />
                     {MODULES.map((module) => (
-                        <Route
-                            key={module.id}
-                            path={module.id}
-                            element={
-                                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-0 overflow-hidden shadow-sm animate-in zoom-in-95 duration-200">
-                                    <module.component />
-                                </div>
-                            }
-                        />
+                        <React.Fragment key={module.id}>
+                            <Route
+                                path={module.id}
+                                element={
+                                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-0 overflow-hidden shadow-sm animate-in zoom-in-95 duration-200">
+                                        <module.component />
+                                    </div>
+                                }
+                            />
+                        </React.Fragment>
                     ))}
                 </Routes>
             </div>

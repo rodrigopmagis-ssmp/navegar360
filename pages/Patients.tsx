@@ -3,12 +3,13 @@ import {
     Search, Plus, Filter, MoreHorizontal, User,
     Phone, Mail, Calendar, FileText, ChevronLeft,
     ChevronRight, Activity, Edit2, Eye, LayoutGrid, List,
-    Trash2
+    Trash2, Shield, Info, AlertCircle, Clock, CheckCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { usePatients } from '../hooks/usePatients';
 import { PatientV2 } from '../types';
 import { PatientModal } from '../components/PatientModal';
+import { getInsuranceStatus } from '../lib/dateUtils';
 
 const StatCard: React.FC<{ label: string; value: string | number; icon: React.ElementType; color: string; bg: string }> = ({ label, value, icon: Icon, color, bg }) => (
     <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
@@ -33,6 +34,96 @@ const StatusBadge: React.FC<{ status: PatientV2['status'] }> = ({ status }) => {
             <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
             {cfg.label}
         </span>
+    );
+};
+
+const InsuranceBadge: React.FC<{ validUntil?: string; onClick: (e: React.MouseEvent) => void }> = ({ validUntil, onClick }) => {
+    if (!validUntil) return <span className="text-[10px] text-slate-300 font-medium italic">Sem convênio</span>;
+
+    const status = getInsuranceStatus(validUntil);
+    const Icon = status.status === 'expired' ? AlertCircle : status.status === 'expiring_soon' ? Clock : CheckCircle;
+
+    return (
+        <button
+            onClick={onClick}
+            title={`Ver detalhes do cartão: ${status.label}`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-tighter transition-all hover:scale-105 active:scale-95 ${status.bgColor} ${status.text || status.color} ${status.border} shadow-sm`}
+        >
+            <Icon className="w-3 h-3" />
+            {status.label}
+        </button>
+    );
+};
+
+const InsurancePopup: React.FC<{ patient: PatientV2; onClose: () => void }> = ({ patient, onClose }) => {
+    const insurance = patient.patient_insurances?.[0];
+    if (!insurance) return null;
+
+    const status = getInsuranceStatus(insurance.valid_until);
+
+    return (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+            <div
+                className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className={`p-4 ${status.bgColor} flex items-center justify-between border-b ${status.border}`}>
+                    <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl ${status.bgColor} border-2 ${status.border} flex items-center justify-center ${status.color} shadow-inner`}>
+                            <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <p className={`text-[10px] font-black uppercase tracking-widest ${status.color} opacity-70`}>Dados do Cartão</p>
+                            <p className={`text-sm font-bold ${status.color}`}>{status.label}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} title="Mais opções do cartão" className={`p-2 rounded-lg hover:bg-black/5 ${status.color} transition-colors`}>
+                        <MoreHorizontal className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="p-5 space-y-4">
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Operadora</p>
+                        <p className="text-sm font-bold text-slate-700">{insurance.insurance_plans?.health_insurers?.name || '---'}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Nº do Cartão</p>
+                            <p className="text-xs font-mono font-bold text-slate-600 bg-slate-50 p-1.5 rounded border border-slate-100">{insurance.card_number || '---'}</p>
+                        </div>
+                        <div>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Validade</p>
+                            <p className="text-xs font-bold text-slate-600">{insurance.valid_until ? new Date(insurance.valid_until).toLocaleDateString('pt-BR') : '---'}</p>
+                        </div>
+                    </div>
+
+                    <div className={`p-3 rounded-xl border ${status.bgColor} ${status.border} ${status.color} flex items-start gap-2.5`}>
+                        <Info className="w-4 h-4 mt-0.5 shrink-0" />
+                        <div>
+                            <p className="text-[11px] font-bold leading-tight">
+                                {status.status === 'expired'
+                                    ? `Este convênio expirou há ${Math.abs(status.daysRemaining || 0)} dias.`
+                                    : status.status === 'expiring_soon'
+                                        ? `Este convênio expira em ${status.daysRemaining} dias.`
+                                        : `Este convênio está com a validade em dia.`}
+                            </p>
+                            <p className="text-[10px] opacity-70 mt-1">Sempre confirme os dados físicos do cartão antes do atendimento.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div >
     );
 };
 
@@ -124,6 +215,7 @@ export const Patients: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [patientToEdit, setPatientToEdit] = useState<PatientV2 | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+    const [selectedPatientForInsurance, setSelectedPatientForInsurance] = useState<PatientV2 | null>(null);
     const navigate = useNavigate();
 
     const filteredPatients = patients.filter(p =>
@@ -241,6 +333,7 @@ export const Patients: React.FC = () => {
                                 <tr className="border-b border-slate-100 bg-slate-50/50">
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Paciente</th>
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Contato</th>
+                                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Validade</th>
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status</th>
                                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Ações</th>
                                 </tr>
@@ -268,6 +361,15 @@ export const Patients: React.FC = () => {
                                                     <Mail className="w-3 h-3 text-slate-400" /> {patient.email || 'N/A'}
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <InsuranceBadge
+                                                validUntil={patient.patient_insurances?.[0]?.valid_until}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedPatientForInsurance(patient);
+                                                }}
+                                            />
                                         </td>
                                         <td className="px-6 py-4">
                                             <StatusBadge status={patient.status} />
@@ -330,6 +432,13 @@ export const Patients: React.FC = () => {
                 onSuccess={refetch}
                 patientToEdit={patientToEdit}
             />
+
+            {selectedPatientForInsurance && (
+                <InsurancePopup
+                    patient={selectedPatientForInsurance}
+                    onClose={() => setSelectedPatientForInsurance(null)}
+                />
+            )}
         </div>
     );
 };

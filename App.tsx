@@ -12,12 +12,15 @@ import { PatientDetail } from './pages/PatientDetail';
 import { Doctors } from './pages/Doctors';
 import { DoctorDetail } from './pages/DoctorDetail';
 import { Settings } from './pages/Settings';
+import { Reports } from './pages/Reports';
+import { Home } from './pages/Home';
 import { DarkModeProvider } from './contexts/DarkModeContext';
 import { Toaster } from 'react-hot-toast';
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const isLoginPage = location.pathname.toLowerCase().includes('login') || location.pathname === '/';
+  const isLoginPage = location.pathname.toLowerCase().includes('login');
+  const isHomePage = location.pathname === '/';
 
   if (isLoginPage) {
     return <>{children}</>;
@@ -25,10 +28,10 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f6f6f8] dark:bg-slate-950 transition-colors">
-      <Topbar />
+      {!isHomePage && <Topbar />}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className={`flex-1 overflow-y-auto ${isHomePage ? 'p-0' : 'p-6'}`}>
           {children}
         </main>
       </div>
@@ -58,8 +61,9 @@ const App: React.FC = () => {
             <Route path="/doctors/:id" element={<DoctorDetail />} />
             <Route path="/case/:id" element={<CaseDetails />} />
             <Route path="/new-order" element={<NewOrder />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/settings/*" element={<Settings />} />
-            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/" element={<Home />} />
           </Routes>
         </Layout>
       </HashRouter>

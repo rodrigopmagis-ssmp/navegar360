@@ -17,7 +17,8 @@ orientacoes-projeto/
 ├── agenda.md               ← (criar quando o módulo for implementado)
 ├── dashboard.md            ← (criar quando o módulo for implementado)
 ├── financeiro.md           ← (criar quando o módulo for implementado)
-└── medicos.md              ← (criar quando o módulo for implementado)
+├── medicos.md              ← (criar quando o módulo for implementado)
+└── pedido-medico-detalhado.md ← Cadastro Detalhado (✅ documentado)
 ```
 
 ---
@@ -42,6 +43,7 @@ orientacoes-projeto/
 | `components/settings/*` (Outros) | `orientacoes-projeto/configuracoes.md` |
 | `pages/Calendar.tsx` ou agenda | `orientacoes-projeto/agenda.md` |
 | `pages/Dashboard.tsx` | `orientacoes-projeto/dashboard.md` |
+| `pages/NewOrder.tsx` | `orientacoes-projeto/pedido-medico-detalhado.md` |
 | Qualquer hook em `hooks/` | `.md` do módulo que usa esse hook |
 
 ---
@@ -258,5 +260,5 @@ useNome() → Supabase
 | **Hospital Settings** | `components/settings/HospitalSettings.tsx`| ✅ `hospitais-parceiros.md` | ✅ Parcial |
 | **Agenda** | `pages/Calendar.tsx` | ❌ a documentar | 🔄 Em progresso |
 | **Dashboard** | `pages/Dashboard.tsx` | ❌ a documentar | 🔄 Em progresso |
-| **Financeiro** | `pages/NewOrder.tsx` | ❌ a documentar | 🔄 Em progresso |
+| **Pedido Detalhado** | `pages/NewOrder.tsx` | ✅ `pedido-medico-detalhado.md` | ✅ Produção |
 | **Médicos** | ❌ não criado | ❌ a criar | ❌ Não iniciado |

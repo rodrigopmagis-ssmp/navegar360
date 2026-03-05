@@ -42,7 +42,7 @@ export const Login: React.FC = () => {
         });
 
         if (error) throw error;
-        navigate('/dashboard');
+        navigate('/');
       }
     } catch (err: any) {
       setError(err.message || 'Erro ao processar solicitação');

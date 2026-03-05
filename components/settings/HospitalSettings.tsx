@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     Building, Plus, Pencil, Trash2, Loader2, Save, X, Stethoscope, AlertCircle, Users,
-    Search, LayoutGrid, List, MapPin, Phone
+    Search, LayoutGrid, List, MapPin, Phone, Mail
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 

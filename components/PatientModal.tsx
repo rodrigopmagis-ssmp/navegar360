@@ -3,6 +3,8 @@ import { X, User, Phone, Mail, Calendar, CreditCard, Save, MapPin, Shield, Chevr
 import { supabase } from '../lib/supabase';
 import { HealthInsurer, InsurancePlan, PatientV2 } from '../types';
 import { validateCPF, validateRG, formatCPF } from '../lib/validations';
+import { cleanDate, getInsuranceStatus } from '../lib/dateUtils';
+import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
 
 interface PatientModalProps {
     isOpen: boolean;
@@ -107,12 +109,24 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
     });
     const [contacts, setContacts] = useState<ContactForm[]>([]);
 
-    const [insurers, setInsuers] = useState<HealthInsurer[]>([]);
+    const [insurers, setInsurers] = useState<HealthInsurer[]>([]);
     const [plans, setPlans] = useState<InsurancePlan[]>([]);
+
+    // Search insurers states
+    const [searchInsurerName, setSearchInsurerName] = useState('');
+    const [searchInsurerCnpj, setSearchInsurerCnpj] = useState('');
+    const [searchInsurerAns, setSearchInsurerAns] = useState('');
+    const [hasSearchedInsurers, setHasSearchedInsurers] = useState(false);
+    const [searchingInsurers, setSearchingInsurers] = useState(false);
+    const [insurerSearchError, setInsurerSearchError] = useState<string | null>(null);
+    const [selectedInsurer, setSelectedInsurer] = useState<HealthInsurer | null>(null);
+    const [authClinicId, setAuthClinicId] = useState<string | null>(null);
+    const [showExpiredAlert, setShowExpiredAlert] = useState(false);
+    const [isConfirmedExpired, setIsConfirmedExpired] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
-            fetchInsurers();
+            init();
             if (patientToEdit) {
                 // ... existing personal/address setters ...
                 setPersonal({
@@ -156,17 +170,78 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
         }
     }, [isOpen, patientToEdit]);
 
+    const getTabStatus = (tabId: Tab): 'empty' | 'partial' | 'complete' | 'error' => {
+        if (tabId === 'personal') {
+            const required = (personal.nationality === 'brasileiro')
+                ? (personal.full_name && personal.cpf)
+                : (personal.full_name && personal.document_number && personal.country_of_origin);
+
+            if (!required) return 'error';
+
+            const fields = [
+                personal.full_name, personal.birth_date, personal.gender,
+                personal.marital_status, personal.profession, personal.ethnicity,
+                personal.origin, personal.father_name, personal.mother_name
+            ];
+            if (personal.nationality === 'brasileiro') {
+                fields.push(personal.cpf, personal.rg, personal.rg_issuer);
+            } else {
+                fields.push(personal.document_number, personal.country_of_origin, personal.document_type);
+            }
+
+            const filledCount = fields.filter(f => !!f).length;
+            if (filledCount === fields.length) return 'complete';
+            if (filledCount > 0) return 'partial';
+            return 'empty';
+        }
+
+        if (tabId === 'address') {
+            const fields = [
+                address.address_zipcode, address.address_street, address.address_number,
+                address.address_neighborhood, address.address_city, address.address_state
+            ];
+            const filledCount = fields.filter(f => !!f).length;
+            if (filledCount === fields.length) return 'complete';
+            if (filledCount > 0) return 'partial';
+            return 'empty';
+        }
+
+        if (tabId === 'insurance') {
+            if (!hasInsurance) return 'empty';
+            const fields = [
+                insurance.insurer_id, insurance.plan_id, insurance.card_number,
+                insurance.holder_name, insurance.holder_cpf, insurance.valid_from, insurance.valid_until
+            ];
+            const filledCount = fields.filter(f => !!f).length;
+            if (filledCount === fields.length) return 'complete';
+            if (filledCount > 0) return 'partial';
+            return 'empty';
+        }
+
+        if (tabId === 'contacts') {
+            return contacts.length > 0 ? 'complete' : 'empty';
+        }
+
+        return 'empty';
+    };
+
     const fetchPatientInsurance = async (patientId: string) => {
         const { data } = await supabase
             .from('patient_insurances')
-            .select('*')
+            .select(`
+                *,
+                insurance_plans (
+                    *,
+                    health_insurers (*)
+                )
+            `)
             .eq('patient_id', patientId)
             .eq('is_primary', true)
             .maybeSingle();
 
         if (data) {
             setInsurance({
-                insurer_id: data.insurer_id || '',
+                insurer_id: (data.insurance_plans as any)?.insurer_id || '',
                 plan_id: data.plan_id || '',
                 card_number: data.card_number || '',
                 holder_name: data.holder_name || '',
@@ -175,10 +250,15 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                 valid_until: data.valid_until || '',
                 is_primary: data.is_primary ?? true,
             });
+            // Update the display for the selected insurer
+            if ((data.insurance_plans as any)?.health_insurers) {
+                setSelectedInsurer((data.insurance_plans as any).health_insurers);
+            }
             setHasInsurance(true);
         } else {
             setInsurance({ ...EMPTY_INSURANCE });
             setHasInsurance(false);
+            setSelectedInsurer(null);
         }
     };
 
@@ -220,9 +300,71 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
         else setPlans([]);
     }, [insurance.insurer_id]);
 
+    const init = async () => {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('clinic_id')
+                    .eq('id', user.id)
+                    .single();
+                if (profile?.clinic_id) setAuthClinicId(profile.clinic_id);
+            }
+        } catch (err) {
+            console.error('Error in init PatientModal:', err);
+        }
+    };
+
+    const handleSearchInsurers = async () => {
+        setInsurerSearchError(null);
+        const nameQuery = searchInsurerName.trim();
+        const cnpjQuery = searchInsurerCnpj.trim();
+        const ansQuery = searchInsurerAns.trim();
+
+        if (!nameQuery && !cnpjQuery && !ansQuery) {
+            setInsurerSearchError('Preencha pelo menos um campo para buscar.');
+            return;
+        }
+
+        if (nameQuery && nameQuery.length < 4 && !cnpjQuery && !ansQuery) {
+            setInsurerSearchError('Para buscar apenas por nome, digite pelo menos 4 caracteres.');
+            return;
+        }
+
+        try {
+            setSearchingInsurers(true);
+            setHasSearchedInsurers(true);
+
+            let query = supabase
+                .from('health_insurers')
+                .select('*');
+
+            if (authClinicId) {
+                query = query.eq('clinic_id', authClinicId);
+            }
+
+            if (nameQuery) {
+                query = query.or(`name.ilike.%${nameQuery}%,legal_name.ilike.%${nameQuery}%`);
+            }
+            if (cnpjQuery) query = query.ilike('cnpj', `%${cnpjQuery}%`);
+            if (ansQuery) query = query.ilike('ans_code', `%${ansQuery}%`);
+
+            const { data, error: err } = await query.order('name');
+            if (err) throw err;
+            setInsurers(data || []);
+        } catch (err: any) {
+            setInsurerSearchError(err.message);
+        } finally {
+            setSearchingInsurers(false);
+        }
+    };
+
     const fetchInsurers = async () => {
+        // This is now only used if we need to pre-fetch a single insurer name when editing
+        // or for compatibility. For now, we'll keep it as a fallback.
         const { data } = await supabase.from('health_insurers').select('*').order('name');
-        setInsuers(data || []);
+        setInsurers(data || []);
     };
 
     const fetchPlans = async (insurerId: string) => {
@@ -274,6 +416,13 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
         setInsurance({ ...EMPTY_INSURANCE });
         setHasInsurance(false);
         setContacts([]);
+        setInsurers([]);
+        setSearchInsurerName('');
+        setSearchInsurerCnpj('');
+        setSearchInsurerAns('');
+        setHasSearchedInsurers(false);
+        setInsurerSearchError(null);
+        setSelectedInsurer(null);
         setActiveTab('personal');
         setErrors({});
     };
@@ -303,15 +452,17 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
             }
         }
 
-        if (hasInsurance && insurance.holder_cpf && !validateCPF(insurance.holder_cpf)) {
-            newErrors.holder_cpf = 'Por favor informe um CPF válido para o titular';
+        if (hasInsurance) {
+            if (insurance.holder_cpf && !validateCPF(insurance.holder_cpf)) {
+                newErrors.holder_cpf = 'Por favor informe um CPF válido para o titular';
+            }
         }
 
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
-    const handleSubmit = async (e?: React.FormEvent) => {
+    const handleSubmit = async (e?: React.FormEvent, isConfirmed?: boolean) => {
         if (e) {
             e.preventDefault();
             if (activeTab !== 'insurance' && activeTab !== 'contacts') return;
@@ -337,6 +488,16 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
 
             if (!profile?.clinic_id) throw new Error('Clínica não encontrada');
 
+            // --- Insurance Logic: Expired Check ---
+            if (hasInsurance) {
+                const statusInfo = getInsuranceStatus(insurance.valid_until);
+                if (statusInfo.status === 'expired' && !isConfirmed && !isConfirmedExpired) {
+                    setShowExpiredAlert(true);
+                    setLoading(false);
+                    return;
+                }
+            }
+
             let patientId = patientToEdit?.id;
 
             if (patientToEdit) {
@@ -344,6 +505,8 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                     .from('patients_v2')
                     .update({
                         ...personal,
+                        birth_date: cleanDate(personal.birth_date),
+                        document_validity: cleanDate(personal.document_validity),
                         ...address,
                         updated_at: new Date().toISOString(),
                     })
@@ -355,6 +518,8 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                     .from('patients_v2')
                     .insert([{
                         ...personal,
+                        birth_date: cleanDate(personal.birth_date),
+                        document_validity: cleanDate(personal.document_validity),
                         ...address,
                         clinic_id: profile.clinic_id,
                         status: 'ativo',
@@ -370,6 +535,37 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
 
             if (patientId) {
                 if (hasInsurance) {
+                    const { insurer_id, ...insuranceData } = insurance;
+
+                    // Fallback: If no plan selected, use insurer name as plan
+                    if (!insuranceData.plan_id && selectedInsurer) {
+                        const { data: existingPlan } = await supabase
+                            .from('insurance_plans')
+                            .select('id')
+                            .eq('insurer_id', selectedInsurer.id)
+                            .eq('plan_name', selectedInsurer.name)
+                            .maybeSingle();
+
+                        if (existingPlan) {
+                            (insuranceData as any).plan_id = existingPlan.id;
+                        } else {
+                            const { data: newPlan, error: planError } = await supabase
+                                .from('insurance_plans')
+                                .insert([{
+                                    insurer_id: selectedInsurer.id,
+                                    plan_name: selectedInsurer.name,
+                                    clinic_id: profile.clinic_id
+                                }])
+                                .select()
+                                .single();
+
+                            if (planError) throw new Error(`Erro ao criar plano padrão: ${planError.message}`);
+                            (insuranceData as any).plan_id = newPlan.id;
+                        }
+                    }
+
+                    // Normalize plan_id and other potential UUIDs
+                    if (insuranceData.plan_id === '') (insuranceData as any).plan_id = null;
                     const { data: existingIns } = await supabase
                         .from('patient_insurances')
                         .select('id')
@@ -378,18 +574,27 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                         .maybeSingle();
 
                     if (existingIns) {
-                        await supabase
+                        const { error: insError } = await supabase
                             .from('patient_insurances')
-                            .update({ ...insurance })
+                            .update({
+                                ...insuranceData,
+                                valid_from: cleanDate(insurance.valid_from),
+                                valid_until: cleanDate(insurance.valid_until),
+                            })
                             .eq('id', existingIns.id);
+                        if (insError) throw insError;
                     } else {
-                        await supabase
+                        const { error: insError } = await supabase
                             .from('patient_insurances')
                             .insert([{
-                                ...insurance,
+                                ...insuranceData,
+                                valid_from: cleanDate(insurance.valid_from),
+                                valid_until: cleanDate(insurance.valid_until),
                                 clinic_id: profile.clinic_id,
                                 patient_id: patientId,
+                                is_primary: true,
                             }]);
+                        if (insError) throw insError;
                     }
                 }
 
@@ -397,9 +602,27 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                 await saveContacts(patientId, profile.clinic_id);
             }
 
+            // --- Audit Log for Expired Card ---
+            const statusInfo = getInsuranceStatus(insurance.valid_until);
+            if (hasInsurance && statusInfo.status === 'expired') {
+                await supabase.from('system_logs').insert([{
+                    clinic_id: profile.clinic_id,
+                    user_id: user.id,
+                    action: 'patient_save_expired_insurance',
+                    details: JSON.stringify({
+                        patient_id: patientId,
+                        patient_name: personal.full_name,
+                        insurer: selectedInsurer?.name,
+                        valid_until: insurance.valid_until,
+                        timestamp: new Date().toISOString()
+                    })
+                }]).select();
+            }
+
             onSuccess();
             onClose();
             resetForm();
+            setIsConfirmedExpired(false);
         } catch (err: any) {
             alert(`Erro ao salvar: ${err.message}`);
         } finally {
@@ -435,38 +658,55 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                 <div className="px-8 py-5 border-b border-slate-100 flex-shrink-0">
                     <div className="flex items-center">
                         {TABS.map((tab, index) => {
-                            const tabOrder: Tab[] = ['personal', 'address', 'insurance', 'contacts'];
-                            const currentIdx = tabOrder.indexOf(activeTab);
-                            const tabIdx = tabOrder.indexOf(tab.id);
-                            const isCompleted = tabIdx < currentIdx;
+                            const status = getTabStatus(tab.id);
                             const isActive = tab.id === activeTab;
                             const Icon = tab.icon;
+
+                            let bgColor = 'bg-white border-slate-200 text-slate-400';
+                            let textColor = 'text-slate-400';
+                            let lineColor = 'bg-slate-150';
+
+                            if (status === 'error') {
+                                bgColor = 'bg-red-500 border-red-500 text-white shadow-sm shadow-red-200';
+                                textColor = 'text-red-600';
+                                lineColor = 'bg-red-200';
+                            } else if (status === 'complete') {
+                                bgColor = 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-200';
+                                textColor = 'text-emerald-600';
+                                lineColor = 'bg-emerald-400';
+                            } else if (status === 'partial') {
+                                bgColor = 'bg-amber-400 border-amber-400 text-white shadow-sm shadow-amber-200';
+                                textColor = 'text-amber-600';
+                                lineColor = 'bg-amber-200';
+                            }
+
+                            if (isActive && status === 'empty') {
+                                bgColor = 'bg-primary-600 border-primary-600 text-white shadow-md shadow-primary-200';
+                                textColor = 'text-primary-600';
+                            }
+
                             return (
                                 <React.Fragment key={tab.id}>
                                     <button
                                         type="button"
                                         onClick={() => setActiveTab(tab.id)}
-                                        className="flex flex-col items-center gap-2 group focus:outline-none"
+                                        className={`flex flex-col items-center gap-2 group focus:outline-none transition-all ${isActive ? 'scale-110' : ''}`}
                                     >
-                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all border-2 ${isCompleted
-                                            ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm shadow-emerald-200'
-                                            : isActive
-                                                ? 'bg-primary-600 border-primary-600 text-white shadow-md shadow-primary-200'
-                                                : 'bg-white border-slate-200 text-slate-400 group-hover:border-primary-300 group-hover:text-primary-500'
-                                            }`}>
-                                            {isCompleted
-                                                ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                                : <Icon className="w-4 h-4" />
-                                            }
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all border-2 ${bgColor} ${isActive ? 'ring-4 ring-primary-500/20' : ''}`}>
+                                            {status === 'complete' ? (
+                                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            ) : (
+                                                <Icon className="w-4 h-4" />
+                                            )}
                                         </div>
-                                        <span className={`text-[10px] font-bold tracking-wide uppercase whitespace-nowrap transition-colors ${isCompleted ? 'text-emerald-600'
-                                            : isActive ? 'text-primary-600'
-                                                : 'text-slate-400 group-hover:text-slate-600'
-                                            }`}>{tab.label}</span>
+                                        <span className={`text-[10px] font-bold tracking-wide uppercase whitespace-nowrap transition-colors ${textColor}`}>
+                                            {tab.label}
+                                        </span>
                                     </button>
                                     {index < TABS.length - 1 && (
-                                        <div className={`flex-1 h-0.5 mx-3 mb-5 rounded-full transition-all ${tabIdx < currentIdx ? 'bg-emerald-400' : 'bg-slate-150'
-                                            }`} />
+                                        <div className={`flex-1 h-0.5 mx-3 mb-5 rounded-full transition-all ${lineColor}`} />
                                     )}
                                 </React.Fragment>
                             );
@@ -812,83 +1052,218 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                                 </div>
 
                                 {hasInsurance && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="col-span-2">
-                                            <label className={labelCls}>Operadora</label>
-                                            <select
-                                                value={insurance.insurer_id}
-                                                onChange={e => setInsurance(i => ({ ...i, insurer_id: e.target.value, plan_id: '' }))}
-                                                title="Operadora de saúde"
-                                                className={inputCls() + ' appearance-none'}
-                                            >
-                                                <option value="">Selecione a operadora...</option>
-                                                {insurers.map(ins => (
-                                                    <option key={ins.id} value={ins.id}>{ins.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-
-                                        {insurance.insurer_id && (
-                                            <div className="col-span-2">
-                                                <label className={labelCls}>Plano</label>
-                                                <select
-                                                    value={insurance.plan_id}
-                                                    onChange={e => setInsurance(i => ({ ...i, plan_id: e.target.value }))}
-                                                    title="Plano de saúde"
-                                                    className={inputCls() + ' appearance-none'}
-                                                >
-                                                    <option value="">Selecione o plano...</option>
-                                                    {plans.map(plan => (
-                                                        <option key={plan.id} value={plan.id}>
-                                                            {plan.plan_name} — {plan.accommodation_type} / {plan.coverage_type}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            </div>
+                                    <>
+                                        {insurance.valid_until && (
+                                            (() => {
+                                                const status = getInsuranceStatus(insurance.valid_until);
+                                                if (status.status === 'valid') return null;
+                                                const Icon = status.status === 'expired' ? AlertCircle : Clock;
+                                                return (
+                                                    <div className={`p-4 rounded-xl border flex items-center gap-3 animate-in fade-in slide-in-from-top-2 ${status.bgColor} border-current/20 ${status.color}`}>
+                                                        <Icon className="w-5 h-5 shrink-0" />
+                                                        <div>
+                                                            <p className="text-sm font-bold uppercase tracking-tight">{status.label}</p>
+                                                            <p className="text-xs opacity-80 font-medium">
+                                                                {status.status === 'expired'
+                                                                    ? `Este cartão venceu há ${Math.abs(status.daysRemaining || 0)} dias. Verifique com o paciente.`
+                                                                    : `Este cartão vencerá em ${status.daysRemaining} dias. Oriente o paciente sobre a renovação.`}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()
                                         )}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="col-span-2">
+                                                <label className={labelCls}>Operadora</label>
 
-                                        <div>
-                                            <label className={labelCls}>Nº do Cartão</label>
-                                            <input type="text" value={insurance.card_number} onChange={e => setInsurance(i => ({ ...i, card_number: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="0000 0000 0000 0000" className={inputCls()} />
-                                        </div>
-                                        <div>
-                                            <label className={labelCls}>Nome do Titular</label>
-                                            <input type="text" value={insurance.holder_name} onChange={e => setInsurance(i => ({ ...i, holder_name: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="Nome como no cartão" className={inputCls()} />
-                                        </div>
-                                        <div>
-                                            <label className={labelCls}>CPF do Titular</label>
-                                            <input
-                                                type="text"
-                                                value={insurance.holder_cpf}
-                                                onChange={e => setInsurance(i => ({ ...i, holder_cpf: formatCPF(e.target.value) }))}
-                                                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                                                placeholder="000.000.000-00"
-                                                className={inputCls(errors.holder_cpf)}
-                                            />
-                                            {errors.holder_cpf && <p className="text-[10px] text-red-500 mt-1 font-bold">{errors.holder_cpf}</p>}
-                                        </div>
-                                        <div />
-                                        <div>
-                                            <label className={labelCls}>Válido a partir de</label>
-                                            <input type="date" value={insurance.valid_from} onChange={e => setInsurance(i => ({ ...i, valid_from: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className={inputCls()} />
-                                        </div>
-                                        <div>
-                                            <label className={labelCls}>Válido até</label>
-                                            <input type="date" value={insurance.valid_until} onChange={e => setInsurance(i => ({ ...i, valid_until: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className={inputCls()} />
-                                        </div>
+                                                {insurance.insurer_id && !hasSearchedInsurers && insurers.length === 0 ? (
+                                                    <div className="flex items-center justify-between p-3 bg-primary-50 border border-primary-100 rounded-xl">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center text-primary-700">
+                                                                <Shield className="w-4 h-4" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-xs font-bold text-slate-700">
+                                                                    {selectedInsurer?.name || 'Convênio Selecionado'}
+                                                                </p>
+                                                                {selectedInsurer ? (
+                                                                    <p className="text-[10px] text-slate-500 flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                                                                        {selectedInsurer.cnpj && <span>CNPJ: {selectedInsurer.cnpj}</span>}
+                                                                        {selectedInsurer.ans_code && <span>ANS: {selectedInsurer.ans_code}</span>}
+                                                                        {selectedInsurer.state && <span className="px-1.5 py-0.5 bg-primary-100 text-primary-700 rounded text-[9px] font-black">{selectedInsurer.state}</span>}
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="text-[10px] text-slate-500">ID: {insurance.insurer_id.split('-')[0]}...</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setInsurance(i => ({ ...i, insurer_id: '', plan_id: '' }));
+                                                                setHasSearchedInsurers(false);
+                                                                setInsurers([]);
+                                                                setSelectedInsurer(null);
+                                                            }}
+                                                            className="text-[10px] font-bold text-primary-600 hover:text-primary-700 uppercase tracking-wider p-1"
+                                                        >
+                                                            Trocar
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                            <div className="relative">
+                                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                                <input
+                                                                    type="text"
+                                                                    value={searchInsurerName}
+                                                                    onChange={e => setSearchInsurerName(e.target.value)}
+                                                                    placeholder="Nome ou Razão Social..."
+                                                                    className={inputCls().replace('px-4', 'pl-10 pr-4')}
+                                                                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleSearchInsurers())}
+                                                                />
+                                                            </div>
+                                                            <input
+                                                                type="text"
+                                                                value={searchInsurerCnpj}
+                                                                onChange={e => setSearchInsurerCnpj(e.target.value)}
+                                                                placeholder="CNPJ..."
+                                                                className={inputCls()}
+                                                                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleSearchInsurers())}
+                                                            />
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    value={searchInsurerAns}
+                                                                    onChange={e => setSearchInsurerAns(e.target.value)}
+                                                                    placeholder="Registro ANS..."
+                                                                    className={inputCls()}
+                                                                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleSearchInsurers())}
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={handleSearchInsurers}
+                                                                    disabled={searchingInsurers}
+                                                                    className="px-4 bg-primary-600 text-white rounded-xl shadow-lg shadow-primary-600/20 hover:bg-primary-700 transition-colors flex items-center justify-center disabled:opacity-50"
+                                                                >
+                                                                    {searchingInsurers ? (
+                                                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                                    ) : (
+                                                                        <Search className="w-4 h-4" />
+                                                                    )}
+                                                                </button>
+                                                            </div>
+                                                        </div>
 
-                                        <div className="col-span-2">
-                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                        {insurerSearchError && (
+                                                            <p className="text-[10px] b-red-500 font-bold text-red-500">{insurerSearchError}</p>
+                                                        )}
+
+                                                        {hasSearchedInsurers && (
+                                                            <div className="border border-slate-100 rounded-xl overflow-hidden bg-slate-50">
+                                                                {insurers.length === 0 ? (
+                                                                    <div className="p-6 text-center">
+                                                                        <Search className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+                                                                        <p className="text-sm font-bold text-slate-400">Nenhum convênio localizado</p>
+                                                                        <p className="text-xs text-slate-300 mt-1 max-w-[300px] mx-auto">
+                                                                            Tente buscar apenas por parte do nome (mín. 4 letras), CNPJ completo ou o número do Registro ANS.
+                                                                        </p>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="max-h-48 overflow-y-auto">
+                                                                        {insurers.map(ins => (
+                                                                            <button
+                                                                                key={ins.id}
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setInsurance(i => ({ ...i, insurer_id: ins.id, plan_id: '' }));
+                                                                                    setSelectedInsurer(ins);
+                                                                                    setHasSearchedInsurers(false);
+                                                                                    setInsurers([]);
+                                                                                }}
+                                                                                className="w-full flex items-center justify-between p-3 hover:bg-white border-b border-slate-100 last:border-0 transition-colors text-left group"
+                                                                            >
+                                                                                <div>
+                                                                                    <p className="text-xs font-bold text-slate-700 group-hover:text-primary-600 transition-colors">{ins.name}</p>
+                                                                                    <p className="text-[10px] text-slate-400">
+                                                                                        {ins.legal_name || '---'} {ins.ans_code && `• ANS: ${ins.ans_code}`}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-primary-500 transition-all group-hover:translate-x-1" />
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {insurance.insurer_id && (
+                                                <div className="col-span-2">
+                                                    <label className={labelCls}>Plano</label>
+                                                    <select
+                                                        value={insurance.plan_id}
+                                                        onChange={e => setInsurance(i => ({ ...i, plan_id: e.target.value }))}
+                                                        title="Plano de saúde"
+                                                        className={inputCls() + ' appearance-none'}
+                                                    >
+                                                        <option value="">Selecione o plano...</option>
+                                                        {plans.map(plan => (
+                                                            <option key={plan.id} value={plan.id}>
+                                                                {plan.plan_name} — {plan.accommodation_type} / {plan.coverage_type}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                            )}
+
+                                            <div>
+                                                <label className={labelCls}>Nº do Cartão</label>
+                                                <input type="text" value={insurance.card_number} onChange={e => setInsurance(i => ({ ...i, card_number: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="0000 0000 0000 0000" className={inputCls()} />
+                                            </div>
+                                            <div>
+                                                <label className={labelCls}>Nome do Titular</label>
+                                                <input type="text" value={insurance.holder_name} onChange={e => setInsurance(i => ({ ...i, holder_name: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} placeholder="Nome como no cartão" className={inputCls()} />
+                                            </div>
+                                            <div>
+                                                <label className={labelCls}>CPF do Titular</label>
                                                 <input
-                                                    type="checkbox"
-                                                    checked={insurance.is_primary}
-                                                    onChange={e => setInsurance(i => ({ ...i, is_primary: e.target.checked }))}
-                                                    className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
+                                                    type="text"
+                                                    value={insurance.holder_cpf}
+                                                    onChange={e => setInsurance(i => ({ ...i, holder_cpf: formatCPF(e.target.value) }))}
+                                                    onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                                                    placeholder="000.000.000-00"
+                                                    className={inputCls(errors.holder_cpf)}
                                                 />
-                                                <span className="text-sm font-medium text-slate-700">Marcar como convênio principal</span>
-                                            </label>
+                                                {errors.holder_cpf && <p className="text-[10px] text-red-500 mt-1 font-bold">{errors.holder_cpf}</p>}
+                                            </div>
+                                            <div />
+                                            <div>
+                                                <label className={labelCls}>Válido a partir de</label>
+                                                <input type="date" value={insurance.valid_from} onChange={e => setInsurance(i => ({ ...i, valid_from: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className={inputCls()} />
+                                            </div>
+                                            <div>
+                                                <label className={labelCls}>Válido até</label>
+                                                <input type="date" value={insurance.valid_until} onChange={e => setInsurance(i => ({ ...i, valid_until: e.target.value }))} onKeyDown={e => e.key === 'Enter' && handleSubmit()} className={inputCls()} />
+                                            </div>
+
+                                            <div className="col-span-2">
+                                                <label className="flex items-center gap-3 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={insurance.is_primary}
+                                                        onChange={e => setInsurance(i => ({ ...i, is_primary: e.target.checked }))}
+                                                        className="w-4 h-4 rounded text-primary-600 focus:ring-primary-500 border-slate-300"
+                                                    />
+                                                    <span className="text-sm font-medium text-slate-700">Marcar como convênio principal</span>
+                                                </label>
+                                            </div>
                                         </div>
-                                    </div>
+                                    </>
                                 )}
                             </div>
                         )}
@@ -1104,6 +1479,42 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                         </div>
                     </div>
                 </div>
+                {/* ── Expired Card Alert Modal ── */}
+                {showExpiredAlert && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in duration-200">
+                        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-red-100 overflow-hidden animate-in zoom-in-95 duration-200">
+                            <div className="p-6 text-center">
+                                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <AlertCircle className="w-8 h-8 text-red-600" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-900">Cartão Vencido</h3>
+                                <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                                    O cartão do convênio <strong>{selectedInsurer?.name}</strong> está vencido desde {insurance.valid_until ? new Date(insurance.valid_until).toLocaleDateString('pt-BR') : 'data não informada'}.
+                                    <br /><br />
+                                    Deseja realmente salvar com o cartão vencido? Esta ação será registrada para fins de auditoria.
+                                </p>
+                            </div>
+                            <div className="flex border-t border-slate-100 h-14">
+                                <button
+                                    onClick={() => setShowExpiredAlert(false)}
+                                    className="flex-1 text-sm font-semibold text-slate-500 hover:bg-slate-50 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setIsConfirmedExpired(true);
+                                        setShowExpiredAlert(false);
+                                        handleSubmit(undefined, true);
+                                    }}
+                                    className="flex-1 text-sm font-black text-red-600 hover:bg-red-50 transition-colors border-l border-slate-100"
+                                >
+                                    SIM, SALVAR MESMO ASSIM
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div >
     );

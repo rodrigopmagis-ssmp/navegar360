@@ -110,9 +110,14 @@ export const InsurerSettings: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Search criteria states
+    const [searchName, setSearchName] = useState('');
+    const [searchCnpj, setSearchCnpj] = useState('');
+    const [searchAns, setSearchAns] = useState('');
+    const [hasSearched, setHasSearched] = useState(false);
+
     // View States
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [searchTerm, setSearchTerm] = useState('');
     const [formMode, setFormMode] = useState<'list' | 'create' | 'edit' | 'view'>('list');
     const [insurerToDelete, setInsurerToDelete] = useState<HealthInsurer | null>(null);
     const [deleting, setDeleting] = useState(false);
@@ -125,29 +130,67 @@ export const InsurerSettings: React.FC = () => {
     const [authClinicId, setAuthClinicId] = useState<string | null>(null);
 
     useEffect(() => {
-        fetchInsurers();
+        // Initial load only gets the clinic_id, no insurers
+        const init = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('clinic_id')
+                        .eq('id', user.id)
+                        .single();
+                    if (profile?.clinic_id) setAuthClinicId(profile.clinic_id);
+                }
+            } catch (err) {
+                console.error('Error in init:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        init();
     }, []);
 
-    const fetchInsurers = async () => {
+    const handleSearch = async (e?: React.FormEvent) => {
+        if (e) e.preventDefault();
+
+        setError(null);
+        const nameQuery = searchName.trim();
+        const cnpjQuery = searchCnpj.trim();
+        const ansQuery = searchAns.trim();
+
+        // Validation: at least one field must be filled
+        if (!nameQuery && !cnpjQuery && !ansQuery) {
+            setError('Preencha pelo menos um campo para buscar.');
+            return;
+        }
+
+        // Only enforce 4-char limit if ONLY name is provided
+        if (nameQuery && nameQuery.length < 4 && !cnpjQuery && !ansQuery) {
+            setError('Para buscar apenas por nome, digite pelo menos 4 caracteres.');
+            return;
+        }
+
         try {
             setLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Usuário não autenticado');
+            setHasSearched(true);
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('clinic_id')
-                .eq('id', user.id)
-                .single();
-
-            if (!profile?.clinic_id) throw new Error('Clínica não encontrada no perfil');
-            setAuthClinicId(profile.clinic_id);
-
-            const { data: data, error: err } = await supabase
+            let query = supabase
                 .from('health_insurers')
-                .select('*, insurer_contacts:health_insurer_contacts(*)')
-                .order('name');
+                .select('*, insurer_contacts:health_insurer_contacts(*)');
 
+            // Apply clinic filter if available (recommended for RLS)
+            if (authClinicId) {
+                query = query.eq('clinic_id', authClinicId);
+            }
+
+            if (nameQuery) {
+                query = query.or(`name.ilike.%${nameQuery}%,legal_name.ilike.%${nameQuery}%`);
+            }
+            if (cnpjQuery) query = query.ilike('cnpj', `%${cnpjQuery}%`);
+            if (ansQuery) query = query.ilike('ans_code', `%${ansQuery}%`);
+
+            const { data, error: err } = await query.order('name');
             if (err) throw err;
             setInsurers(data || []);
         } catch (err: any) {
@@ -205,7 +248,7 @@ export const InsurerSettings: React.FC = () => {
             setContacts([]);
             setDeletedContactIds([]);
 
-            await fetchInsurers();
+            await handleSearch();
 
         } catch (err: any) {
             setError(err.message);
@@ -221,7 +264,7 @@ export const InsurerSettings: React.FC = () => {
             const { error: delErr } = await supabase.from('health_insurers').delete().eq('id', insurerToDelete.id);
             if (delErr) throw delErr;
 
-            await fetchInsurers();
+            await handleSearch();
             setInsurerToDelete(null);
 
             if (formMode !== 'list' && currentInsurer?.id === insurerToDelete.id) {
@@ -267,11 +310,7 @@ export const InsurerSettings: React.FC = () => {
         setContacts(newContacts);
     };
 
-    const filteredInsurers = insurers.filter(i =>
-        i.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (i.cnpj && i.cnpj.includes(searchTerm)) ||
-        (i.legal_name && i.legal_name.toLowerCase().includes(searchTerm.toLowerCase()))
-    );
+    const filteredInsurers = insurers;
 
     if (loading) {
         return (
@@ -585,17 +624,56 @@ export const InsurerSettings: React.FC = () => {
                     </button>
                 </div>
 
-                <div className="flex flex-col sm:flex-row items-center gap-3 mt-6">
-                    <div className="relative flex-1 w-full">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end mt-6 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <div className="md:col-span-5 space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-500 ml-1">Nome da Operadora (Mín 4 chars)</label>
+                        <div className="relative">
+                            <Building2 className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Ex: Unimed"
+                                value={searchName}
+                                onChange={(e) => setSearchName(e.target.value)}
+                                className="w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-sm"
+                            />
+                        </div>
+                    </div>
+                    <div className="md:col-span-3 space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-500 ml-1">CNPJ</label>
                         <input
                             type="text"
-                            placeholder="Buscar por nome ou CNPJ..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900"
+                            placeholder="00.000.000/0000-00"
+                            value={searchCnpj}
+                            onChange={(e) => setSearchCnpj(formatCNPJ(e.target.value))}
+                            className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-sm"
                         />
                     </div>
+                    <div className="md:col-span-2 space-y-1">
+                        <label className="text-[10px] font-bold uppercase text-slate-500 ml-1">Registro ANS</label>
+                        <input
+                            type="text"
+                            placeholder="00000-0"
+                            value={searchAns}
+                            onChange={(e) => setSearchAns(e.target.value)}
+                            className="w-full px-4 py-2 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 bg-white dark:bg-slate-900 text-sm"
+                        />
+                    </div>
+                    <div className="md:col-span-2">
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-primary-600 hover:bg-primary-700 text-white h-[38px] rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-primary-600/20 disabled:bg-primary-400"
+                        >
+                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                            Buscar
+                        </button>
+                    </div>
+                </form>
+
+                <div className="flex items-center justify-between mt-6 px-1">
+                    <p className="text-xs text-slate-500">
+                        {hasSearched ? `${insurers.length} resultado(s) encontrado(s)` : 'Utilize os filtros acima para pesquisar operadoras.'}
+                    </p>
                     <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg shrink-0">
                         <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-primary-600' : 'text-slate-500'}`} title="Grade"><LayoutGrid className="w-4 h-4" /></button>
                         <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-white shadow-sm text-primary-600' : 'text-slate-500'}`} title="Lista"><List className="w-4 h-4" /></button>
@@ -604,11 +682,37 @@ export const InsurerSettings: React.FC = () => {
             </div>
 
             <div className="px-6 pb-6">
-                {filteredInsurers.length === 0 ? (
-                    <div className="text-center py-16 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                        <Shield className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <h3 className="text-slate-600 font-medium">{insurers.length === 0 ? 'Nenhuma operadora cadastrada' : 'Nenhum resultado encontrado'}</h3>
-                        <p className="text-slate-500 text-sm mt-1 mb-4">Cadastre convênios para gerenciar planos e autorizações.</p>
+                {insurers.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-20 bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl shadow-sm text-center px-6">
+                        <div className="w-16 h-16 bg-primary-50 dark:bg-primary-900/20 rounded-full flex items-center justify-center mb-4">
+                            <Shield className="w-8 h-8 text-primary-500" />
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-2">
+                            {!hasSearched ? 'Inicie sua Pesquisa' : 'Nenhuma Operadora Localizada'}
+                        </h3>
+                        <p className="text-slate-500 dark:text-slate-400 max-w-md mx-auto mb-6 text-sm">
+                            {!hasSearched
+                                ? 'Para gerenciar convênios, pesquise por nome, CNPJ ou Registro ANS utilizando os campos acima.'
+                                : 'Não encontramos nenhuma operadora com os critérios informados. Verifique se os dados estão corretos ou tente uma busca mais abrangente.'}
+                        </p>
+
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-lg border border-slate-100 dark:border-slate-700/50 max-w-sm w-full">
+                            <h4 className="text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-3 text-left">Dicas de Busca:</h4>
+                            <ul className="text-left space-y-2">
+                                <li className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary-500 mt-1 shrink-0" />
+                                    <span>Ao buscar por <strong>Nome</strong>, digite pelo menos 4 caracteres.</span>
+                                </li>
+                                <li className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary-500 mt-1 shrink-0" />
+                                    <span>Busque pelo <strong>CNPJ</strong> completo para resultados exatos.</span>
+                                </li>
+                                <li className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-primary-500 mt-1 shrink-0" />
+                                    <span>O <strong>Registro ANS</strong> é uma excelente forma de localizar operadoras específicas.</span>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 ) : (
                     viewMode === 'grid' ? (
