@@ -4,6 +4,7 @@ import {
     Search, LayoutGrid, List, MapPin, Phone, Mail
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface HospitalContact {
     id?: string;
@@ -139,6 +140,7 @@ const PhoneWithRamalInput = ({ value, onChange, placeholder, className, disabled
 };
 
 export const HospitalSettings: React.FC = () => {
+    const { profile } = useAuth();
     const [hospitals, setHospitals] = useState<Hospital[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -155,30 +157,20 @@ export const HospitalSettings: React.FC = () => {
     const [currentHospital, setCurrentHospital] = useState<Partial<Hospital> | null>(null);
     const [contacts, setContacts] = useState<HospitalContact[]>([]);
     const [deletedContactIds, setDeletedContactIds] = useState<string[]>([]);
-    const [authClinicId, setAuthClinicId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchHospitals();
-    }, []);
+    }, [profile?.clinic_id]);
 
     const fetchHospitals = async () => {
+        if (!profile?.clinic_id) return;
         try {
             setLoading(true);
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Usuário não autenticado');
-
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('clinic_id')
-                .eq('id', user.id)
-                .single();
-
-            if (!profile?.clinic_id) throw new Error('Clínica não encontrada no perfil');
-            setAuthClinicId(profile.clinic_id);
 
             const { data: hospData, error: hospErr } = await supabase
                 .from('hospitals')
                 .select('*, hospital_contacts(*)')
+                .eq('clinic_id', profile.clinic_id)
                 .order('name');
 
             if (hospErr) throw hospErr;
@@ -192,11 +184,11 @@ export const HospitalSettings: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentHospital || !authClinicId || formMode === 'view') return;
+        if (!currentHospital || !profile?.clinic_id || formMode === 'view') return;
 
         try {
             setSaving(true);
-            const payload = { ...currentHospital, clinic_id: authClinicId };
+            const payload = { ...currentHospital, clinic_id: profile.clinic_id };
             delete payload.hospital_contacts;
 
             let finalHospitalId = currentHospital.id;

@@ -15,16 +15,31 @@ import { Settings } from './pages/Settings';
 import { Reports } from './pages/Reports';
 import { Home } from './pages/Home';
 import { DarkModeProvider } from './contexts/DarkModeContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { SelectClinic } from './pages/SelectClinic';
 import { Toaster } from 'react-hot-toast';
+
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, selectedClinic, loading } = useAuth();
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Carregando permissões...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!selectedClinic) {
+    return <Navigate to="/select-clinic" replace />;
+  }
+
+  return <>{children}</>;
+};
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const location = useLocation();
-  const isLoginPage = location.pathname.toLowerCase().includes('login');
   const isHomePage = location.pathname === '/';
-
-  if (isLoginPage) {
-    return <>{children}</>;
-  }
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#f6f6f8] dark:bg-slate-950 transition-colors">
@@ -39,11 +54,42 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   );
 };
 
+const AppRoutes = () => {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/select-clinic" element={<SelectClinic />} />
+      <Route
+        path="*"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <Routes>
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/calendar" element={<Calendar />} />
+                <Route path="/patients" element={<Patients />} />
+                <Route path="/patients/:id" element={<PatientDetail />} />
+                <Route path="/doctors" element={<Doctors />} />
+                <Route path="/doctors/:id" element={<DoctorDetail />} />
+                <Route path="/case/:id" element={<CaseDetails />} />
+                <Route path="/new-order" element={<NewOrder />} />
+                <Route path="/reports" element={<Reports />} />
+                <Route path="/settings/*" element={<Settings />} />
+                <Route path="/" element={<Home />} />
+              </Routes>
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
+  );
+};
+
 const App: React.FC = () => {
   return (
-    <DarkModeProvider>
-      <HashRouter>
-        <Layout>
+    <AuthProvider>
+      <DarkModeProvider>
+        <HashRouter>
           <Toaster
             position="top-right"
             toastOptions={{
@@ -51,23 +97,10 @@ const App: React.FC = () => {
               duration: 4000,
             }}
           />
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/calendar" element={<Calendar />} />
-            <Route path="/patients" element={<Patients />} />
-            <Route path="/patients/:id" element={<PatientDetail />} />
-            <Route path="/doctors" element={<Doctors />} />
-            <Route path="/doctors/:id" element={<DoctorDetail />} />
-            <Route path="/case/:id" element={<CaseDetails />} />
-            <Route path="/new-order" element={<NewOrder />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/settings/*" element={<Settings />} />
-            <Route path="/" element={<Home />} />
-          </Routes>
-        </Layout>
-      </HashRouter>
-    </DarkModeProvider>
+          <AppRoutes />
+        </HashRouter>
+      </DarkModeProvider>
+    </AuthProvider>
   );
 };
 

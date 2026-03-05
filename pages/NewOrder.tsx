@@ -15,6 +15,7 @@ import { ExamRow } from '../components/inputs/ExamRow';
 import { OpmeRow } from '../components/inputs/OpmeRow';
 import { EquipmentRow } from '../components/inputs/EquipmentRow';
 import { ParticipantRow } from '../components/inputs/ParticipantRow';
+import { useAuth } from '../contexts/AuthContext';
 
 const EXAM_PREFIXES = ['2', '4'];
 
@@ -54,6 +55,7 @@ export const NewOrder: React.FC = () => {
   const [patients, setPatients] = useState<PatientV2[]>([]);
   const [hospitals, setHospitals] = useState<any[]>([]);
   const { doctors } = useDoctors();
+  const { selectedClinic } = useAuth();
 
   // Form states: Beneficiario
   const [selectedPatientId, setSelectedPatientId] = useState<string>(passedPatientId || '');
@@ -204,21 +206,17 @@ export const NewOrder: React.FC = () => {
   useEffect(() => {
     const fetchEquipments = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase.from('profiles').select('clinic_id').eq('id', user.id).single();
-          if (profile?.clinic_id) {
-            const { data } = await supabase
-              .from('protocols')
-              .select('name')
-              .eq('type', 'equipment')
-              .eq('clinic_id', profile.clinic_id)
-              .eq('active', true)
-              .order('name');
-            if (data && data.length > 0) {
-              setAvailableEquipments(data.map(e => e.name));
-              return;
-            }
+        if (selectedClinic?.id) {
+          const { data } = await supabase
+            .from('protocols')
+            .select('name')
+            .eq('type', 'equipment')
+            .eq('clinic_id', selectedClinic.id)
+            .eq('active', true)
+            .order('name');
+          if (data && data.length > 0) {
+            setAvailableEquipments(data.map(e => e.name));
+            return;
           }
         }
       } catch (e) {
@@ -234,21 +232,17 @@ export const NewOrder: React.FC = () => {
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const { data: profile } = await supabase.from('profiles').select('clinic_id').eq('id', user.id).single();
-          if (profile?.clinic_id) {
-            const { data } = await supabase
-              .from('protocols')
-              .select('id, name')
-              .eq('type', 'team')
-              .eq('clinic_id', profile.clinic_id)
-              .eq('active', true)
-              .order('name');
-            if (data && data.length > 0) {
-              setAvailableRoles(data);
-              return;
-            }
+        if (selectedClinic?.id) {
+          const { data } = await supabase
+            .from('protocols')
+            .select('id, name')
+            .eq('type', 'team')
+            .eq('clinic_id', selectedClinic.id)
+            .eq('active', true)
+            .order('name');
+          if (data && data.length > 0) {
+            setAvailableRoles(data);
+            return;
           }
         }
       } catch (e) {
@@ -336,14 +330,11 @@ export const NewOrder: React.FC = () => {
     try {
       setSaving(true);
 
-      // 1. Get current clinic_id
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase.from('profiles').select('clinic_id').eq('id', user?.id).single();
-      if (!profile?.clinic_id) throw new Error('Clínica não encontrada');
+      if (!selectedClinic?.id) throw new Error('Clínica não encontrada');
 
       // 2. Insert or Update surgical case (Order)
       const orderPayload = {
-        clinic_id: profile.clinic_id,
+        clinic_id: selectedClinic.id,
         patient_id: selectedPatientId,
         doctor_id: selectedDoctorId,
         hospital_id: localType === 'parceiro' ? selectedHospitalId : null,

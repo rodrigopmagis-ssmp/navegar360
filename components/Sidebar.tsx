@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Users, FileText, Settings, LogOut, ChevronLeft, ChevronRight, Stethoscope } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
+  const { permissions } = useAuth();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const handleLogout = () => {
@@ -11,13 +13,13 @@ export const Sidebar: React.FC = () => {
   };
 
   const navItems = [
-    { icon: LayoutDashboard, label: 'Visão Geral', path: '/dashboard' },
-    { icon: Users, label: 'Pacientes', path: '/patients' },
-    { icon: Stethoscope, label: 'Médicos', path: '/doctors' },
-    { icon: Calendar, label: 'Agenda', path: '/calendar' },
-    { icon: FileText, label: 'Relatórios', path: '/reports' },
-    { icon: Settings, label: 'Configurações', path: '/settings' },
-  ];
+    { icon: LayoutDashboard, label: 'Visão Geral', path: '/dashboard', show: true },
+    { icon: Users, label: 'Pacientes', path: '/patients', show: true },
+    { icon: Stethoscope, label: 'Médicos', path: '/doctors', show: true },
+    { icon: Calendar, label: 'Agenda', path: '/calendar', show: true },
+    { icon: FileText, label: 'Relatórios', path: '/reports', show: permissions.can_access_reports },
+    { icon: Settings, label: 'Configurações', path: '/settings', show: true },
+  ].filter(item => item.show);
 
   return (
     <aside

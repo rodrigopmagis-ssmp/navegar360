@@ -5,6 +5,7 @@ import {
     Hash, FileText, Smartphone
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface ClinicData {
     id: string;
@@ -53,6 +54,7 @@ const formatPhone = (value: string) => {
 };
 
 export const ClinicSettings: React.FC = () => {
+    const { profile } = useAuth();
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -67,22 +69,12 @@ export const ClinicSettings: React.FC = () => {
 
     useEffect(() => {
         fetchClinicData();
-    }, []);
+    }, [profile?.clinic_id]);
 
     const fetchClinicData = async () => {
+        if (!profile?.clinic_id) return;
         try {
             setLoading(true);
-            // Get current user's clinic_id
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Not authenticated');
-
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('clinic_id')
-                .eq('id', user.id)
-                .single();
-
-            if (!profile?.clinic_id) throw new Error('No clinic associated with user');
 
             const { data: clinic, error: clinicError } = await supabase
                 .from('clinics')

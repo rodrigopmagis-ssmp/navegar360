@@ -1,6 +1,7 @@
-import React from 'react';
-import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import React, { useMemo } from 'react';
+import { Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Building2, Bell, Shield, Sliders, ArrowLeft, LayoutList, Users, Building, FileSignature, ClipboardList } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import { ClinicSettings } from '../components/settings/ClinicSettings';
 import { ProtocolsSettings } from '../components/settings/ProtocolsSettings';
 import { FieldsSettings } from '../components/settings/FieldsSettings';
@@ -106,10 +107,22 @@ const MODULES = [
 
 const SettingsHub: React.FC = () => {
     const navigate = useNavigate();
+    const { userClinics, selectedClinic } = useAuth();
+
+    const currentPermission = useMemo(() => {
+        return userClinics.find(uc => uc.clinic_id === selectedClinic?.clinic_id)?.permissions || {};
+    }, [userClinics, selectedClinic]);
+
+    const availableModules = useMemo(() => {
+        return MODULES.filter(m => {
+            if (m.id === 'users') return currentPermission.can_manage_users;
+            return true;
+        });
+    }, [currentPermission]);
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 pt-4 animate-in fade-in duration-500">
-            {MODULES.map((module) => (
+            {availableModules.map((module) => (
                 <button
                     key={module.id}
                     onClick={() => navigate(module.path)}
@@ -133,9 +146,28 @@ const SettingsHub: React.FC = () => {
 export const Settings: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { userClinics, selectedClinic } = useAuth();
+
+    const currentPermission = useMemo(() => {
+        return userClinics.find(uc => uc.clinic_id === selectedClinic?.clinic_id)?.permissions || {};
+    }, [userClinics, selectedClinic]);
+
+    const availableModules = useMemo(() => {
+        return MODULES.filter(m => {
+            if (m.id === 'users') return currentPermission.can_manage_users;
+            return true;
+        });
+    }, [currentPermission]);
 
     // Determina o módulo ativo baseado na URL
-    const activeModule = MODULES.find(m => location.pathname.includes(m.path));
+    const activeModule = availableModules.find(m => location.pathname.includes(m.path));
+
+    // Redirect if accessing a module without permission
+    const isAccessingRestrictedModule = MODULES.find(m => location.pathname.includes(m.path)) && !activeModule;
+
+    if (isAccessingRestrictedModule) {
+        return <Navigate to="/settings" replace />;
+    }
 
     return (
         <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -176,7 +208,7 @@ export const Settings: React.FC = () => {
             <div>
                 <Routes>
                     <Route path="/" element={<SettingsHub />} />
-                    {MODULES.map((module) => (
+                    {availableModules.map((module) => (
                         <React.Fragment key={module.id}>
                             <Route
                                 path={module.id}

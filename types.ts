@@ -1,5 +1,14 @@
 export type UserRole = 'admin' | 'medic' | 'technician';
 
+export interface UserPermissions {
+  can_view_financial: boolean;
+  can_manage_users: boolean;
+  can_access_reports: boolean;
+  can_delete_schedule: boolean;
+  can_create_case: boolean;
+  can_edit_settings: boolean;
+}
+
 export interface Clinic {
   id: string;
   name: string;
@@ -9,10 +18,28 @@ export interface Clinic {
 
 export interface Profile {
   id: string;
-  clinic_id: string;
   full_name: string;
-  role: UserRole;
   updated_at: string;
+}
+
+export type UserClinicStatus = 'pending' | 'active' | 'inactive';
+
+export interface UserClinic {
+  id: string;
+  user_id: string;
+  clinic_id: string;
+  role: UserRole;
+  status: UserClinicStatus;
+  permissions: Record<string, boolean>;
+  approved_by?: string;
+  approved_at?: string;
+  inactivated_by?: string;
+  inactivated_at?: string;
+  created_at: string;
+  updated_at: string;
+  // join
+  clinics?: Clinic;
+  profiles?: Profile;
 }
 
 export enum CaseStatus {

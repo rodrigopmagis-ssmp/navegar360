@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useAuth } from '../contexts/AuthContext';
 
 // Tipagem para cirurgia do dashboard
 interface DashboardSurgery {
@@ -77,6 +78,7 @@ const ProgressBarGroup: React.FC<{ progress: any }> = ({ progress }) => {
 
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { permissions } = useAuth();
   const [surgeries, setSurgeries] = useState<DashboardSurgery[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -190,12 +192,14 @@ export const Dashboard: React.FC = () => {
           />
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/new-order')}
-            className="bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap shadow-lg shadow-primary-600/20"
-          >
-            <Plus className="w-4 h-4" /> Nova Cirurgia
-          </button>
+          {permissions.can_create_case && (
+            <button
+              onClick={() => navigate('/new-order')}
+              className="bg-primary-600 hover:bg-primary-700 text-white font-bold py-2.5 px-6 rounded-lg text-sm flex items-center gap-2 transition-colors whitespace-nowrap shadow-lg shadow-primary-600/20"
+            >
+              <Plus className="w-4 h-4" /> Nova Cirurgia
+            </button>
+          )}
         </div>
       </div>
 

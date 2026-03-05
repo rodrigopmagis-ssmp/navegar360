@@ -2,39 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Bell, Search, RotateCw, Moon, Sun, User, Zap, Plus, UserPlus } from 'lucide-react';
 import { useDarkMode } from '../contexts/DarkModeContext';
 import { supabase } from '../lib/supabase';
-import { Profile } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import { QuickPatientModal } from './modals/QuickPatientModal';
 
 export const Topbar: React.FC = () => {
   const { isDark, toggle } = useDarkMode();
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const { profile, user } = useAuth();
   const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
-
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUserEmail(user.email || null);
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          if (profileData) {
-            setProfile(profileData);
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching user data for Topbar:', err);
-      }
-    };
-
-    fetchUserData();
-  }, []);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -137,10 +112,10 @@ export const Topbar: React.FC = () => {
         <div className="flex items-center gap-3 pl-4 border-l border-slate-200 dark:border-slate-700">
           <div className="text-right hidden md:block">
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 line-clamp-1">
-              {profile?.full_name || userEmail?.split('@')[0] || 'Carregando...'}
+              {profile?.full_name || profile?.name || user?.email?.split('@')[0] || 'Carregando...'}
             </p>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[120px]">
-              {userEmail || '---'}
+              {user?.email || '---'}
             </p>
           </div>
           <div className="w-10 h-10 rounded-xl border-2 border-white dark:border-slate-700 shadow-sm bg-slate-100 dark:bg-slate-800 flex items-center justify-center overflow-hidden shrink-0">

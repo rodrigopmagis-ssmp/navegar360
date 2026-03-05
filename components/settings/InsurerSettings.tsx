@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-    Shield, Plus, Pencil, Trash2, Loader2, Save, X, Activity, AlertCircle, Users,
-    Search, LayoutGrid, List, MapPin, Phone, Mail, Building2
-} from 'lucide-react';
+import { Shield, Plus, Pencil, Trash2, Loader2, Save, X, Activity, AlertCircle, Users, Search, LayoutGrid, List, MapPin, Phone, Mail, Building2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import { HealthInsurer, HealthInsurerContact } from '../../types';
 
 const formatCNPJ = (value: string) => {
@@ -106,6 +104,7 @@ const PhoneWithRamalInput = ({ value, onChange, placeholder, className, disabled
 };
 
 export const InsurerSettings: React.FC = () => {
+    const { profile } = useAuth();
     const [insurers, setInsurers] = useState<HealthInsurer[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -127,29 +126,10 @@ export const InsurerSettings: React.FC = () => {
     const [currentInsurer, setCurrentInsurer] = useState<Partial<HealthInsurer> | null>(null);
     const [contacts, setContacts] = useState<HealthInsurerContact[]>([]);
     const [deletedContactIds, setDeletedContactIds] = useState<string[]>([]);
-    const [authClinicId, setAuthClinicId] = useState<string | null>(null);
 
     useEffect(() => {
-        // Initial load only gets the clinic_id, no insurers
-        const init = async () => {
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (user) {
-                    const { data: profile } = await supabase
-                        .from('profiles')
-                        .select('clinic_id')
-                        .eq('id', user.id)
-                        .single();
-                    if (profile?.clinic_id) setAuthClinicId(profile.clinic_id);
-                }
-            } catch (err) {
-                console.error('Error in init:', err);
-            } finally {
-                setLoading(false);
-            }
-        };
-        init();
-    }, []);
+        setLoading(false);
+    }, [profile]);
 
     const handleSearch = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
@@ -180,8 +160,8 @@ export const InsurerSettings: React.FC = () => {
                 .select('*, insurer_contacts:health_insurer_contacts(*)');
 
             // Apply clinic filter if available (recommended for RLS)
-            if (authClinicId) {
-                query = query.eq('clinic_id', authClinicId);
+            if (profile?.clinic_id) {
+                query = query.eq('clinic_id', profile.clinic_id);
             }
 
             if (nameQuery) {
@@ -202,11 +182,11 @@ export const InsurerSettings: React.FC = () => {
 
     const handleSave = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!currentInsurer || !authClinicId || formMode === 'view') return;
+        if (!currentInsurer || !profile?.clinic_id || formMode === 'view') return;
 
         try {
             setSaving(true);
-            const payload: any = { ...currentInsurer, clinic_id: authClinicId };
+            const payload: any = { ...currentInsurer, clinic_id: profile.clinic_id };
             delete payload.insurer_contacts;
 
             let finalId = currentInsurer.id;
@@ -227,7 +207,7 @@ export const InsurerSettings: React.FC = () => {
             if (contacts.length > 0) {
                 const contactsPayload = contacts.map(c => {
                     const mapped: any = {
-                        clinic_id: authClinicId,
+                        clinic_id: profile.clinic_id,
                         insurer_id: finalId,
                         name: c.name,
                         role: c.role || null,
@@ -298,7 +278,7 @@ export const InsurerSettings: React.FC = () => {
         setFormMode('view');
     };
 
-    const addContact = () => setContacts([...contacts, { id: `temp-${Date.now()}`, name: '', role: '', phone: '', email: '', notes: '', clinic_id: authClinicId!, insurer_id: currentInsurer?.id || '', created_at: new Date().toISOString() }]);
+    const addContact = () => setContacts([...contacts, { id: `temp-${Date.now()}`, name: '', role: '', phone: '', email: '', notes: '', clinic_id: profile?.clinic_id!, insurer_id: currentInsurer?.id || '', created_at: new Date().toISOString() }]);
     const removeContact = (index: number) => {
         const c = contacts[index];
         if (c.id && !c.id.startsWith('temp-')) setDeletedContactIds([...deletedContactIds, c.id]);

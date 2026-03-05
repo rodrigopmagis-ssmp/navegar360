@@ -5,6 +5,7 @@ import { HealthInsurer, InsurancePlan, PatientV2 } from '../types';
 import { validateCPF, validateRG, formatCPF } from '../lib/validations';
 import { cleanDate, getInsuranceStatus } from '../lib/dateUtils';
 import { AlertCircle, Clock, CheckCircle } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface PatientModalProps {
     isOpen: boolean;
@@ -120,7 +121,7 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
     const [searchingInsurers, setSearchingInsurers] = useState(false);
     const [insurerSearchError, setInsurerSearchError] = useState<string | null>(null);
     const [selectedInsurer, setSelectedInsurer] = useState<HealthInsurer | null>(null);
-    const [authClinicId, setAuthClinicId] = useState<string | null>(null);
+    const { selectedClinic, user } = useAuth();
     const [showExpiredAlert, setShowExpiredAlert] = useState(false);
     const [isConfirmedExpired, setIsConfirmedExpired] = useState(false);
 
@@ -301,19 +302,7 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
     }, [insurance.insurer_id]);
 
     const init = async () => {
-        try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('clinic_id')
-                    .eq('id', user.id)
-                    .single();
-                if (profile?.clinic_id) setAuthClinicId(profile.clinic_id);
-            }
-        } catch (err) {
-            console.error('Error in init PatientModal:', err);
-        }
+        // Initialization handled by AuthContext now
     };
 
     const handleSearchInsurers = async () => {
@@ -340,8 +329,8 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                 .from('health_insurers')
                 .select('*');
 
-            if (authClinicId) {
-                query = query.eq('clinic_id', authClinicId);
+            if (selectedClinic?.id) {
+                query = query.eq('clinic_id', selectedClinic.id);
             }
 
             if (nameQuery) {
@@ -477,16 +466,8 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
         setLoading(true);
 
         try {
-            const { data: { user } } = await supabase.auth.getUser();
             if (!user) throw new Error('Usuário não autenticado');
-
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('clinic_id')
-                .eq('id', user.id)
-                .single();
-
-            if (!profile?.clinic_id) throw new Error('Clínica não encontrada');
+            if (!selectedClinic?.id) throw new Error('Clínica não selecionada');
 
             // --- Insurance Logic: Expired Check ---
             if (hasInsurance) {
@@ -521,7 +502,7 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                         birth_date: cleanDate(personal.birth_date),
                         document_validity: cleanDate(personal.document_validity),
                         ...address,
-                        clinic_id: profile.clinic_id,
+                        clinic_id: selectedClinic.id,
                         status: 'ativo',
                         lgpd_consent: true,
                         lgpd_consent_at: new Date().toISOString(),
@@ -554,7 +535,7 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                                 .insert([{
                                     insurer_id: selectedInsurer.id,
                                     plan_name: selectedInsurer.name,
-                                    clinic_id: profile.clinic_id
+                                    clinic_id: selectedClinic.id
                                 }])
                                 .select()
                                 .single();
@@ -590,7 +571,7 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                                 ...insuranceData,
                                 valid_from: cleanDate(insurance.valid_from),
                                 valid_until: cleanDate(insurance.valid_until),
-                                clinic_id: profile.clinic_id,
+                                clinic_id: selectedClinic.id,
                                 patient_id: patientId,
                                 is_primary: true,
                             }]);
@@ -599,14 +580,14 @@ export const PatientModal: React.FC<PatientModalProps> = ({ isOpen, onClose, onS
                 }
 
                 // Save emergency contacts
-                await saveContacts(patientId, profile.clinic_id);
+                await saveContacts(patientId, selectedClinic.id);
             }
 
             // --- Audit Log for Expired Card ---
             const statusInfo = getInsuranceStatus(insurance.valid_until);
             if (hasInsurance && statusInfo.status === 'expired') {
                 await supabase.from('system_logs').insert([{
-                    clinic_id: profile.clinic_id,
+                    clinic_id: selectedClinic.id,
                     user_id: user.id,
                     action: 'patient_save_expired_insurance',
                     details: JSON.stringify({

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Stethoscope, ChevronRight, ChevronLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Doctor } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 
 interface DoctorModalProps {
     isOpen: boolean;
@@ -52,6 +53,7 @@ export const DoctorModal: React.FC<DoctorModalProps> = ({ isOpen, onClose, onSuc
     const [contact, setContact] = useState(defaultContact);
     const [saving, setSaving] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const { selectedClinic } = useAuth();
 
     useEffect(() => {
         if (!isOpen) return;
@@ -92,13 +94,12 @@ export const DoctorModal: React.FC<DoctorModalProps> = ({ isOpen, onClose, onSuc
         if (!validate()) { setActiveTab('professional'); return; }
         setSaving(true);
         try {
-            const { data: profile } = await supabase.from('profiles').select('clinic_id').eq('id', (await supabase.auth.getUser()).data.user!.id).single();
-            if (!profile) throw new Error('Perfil não encontrado');
+            if (!selectedClinic?.id) throw new Error('Perfil ou clínica não encontrada');
 
             const payload = {
                 ...professional,
                 ...contact,
-                clinic_id: profile.clinic_id,
+                clinic_id: selectedClinic.id,
             };
 
             if (doctorToEdit) {
@@ -153,8 +154,8 @@ export const DoctorModal: React.FC<DoctorModalProps> = ({ isOpen, onClose, onSuc
                                 <React.Fragment key={tab.id}>
                                     <button type="button" onClick={() => setActiveTab(tab.id)} className="flex flex-col items-center gap-2 group focus:outline-none">
                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm transition-all border-2 ${isCompleted ? 'bg-emerald-500 border-emerald-500 text-white' :
-                                                isActive ? 'bg-primary-600 border-primary-600 text-white shadow-md shadow-primary-200' :
-                                                    'bg-white border-slate-200 text-slate-400 group-hover:border-primary-300'}`}>
+                                            isActive ? 'bg-primary-600 border-primary-600 text-white shadow-md shadow-primary-200' :
+                                                'bg-white border-slate-200 text-slate-400 group-hover:border-primary-300'}`}>
                                             {isCompleted
                                                 ? <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                                 : <Icon className="w-4 h-4" />}

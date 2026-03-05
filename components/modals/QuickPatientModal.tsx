@@ -3,6 +3,7 @@ import { X, User, Phone, Shield, FileText, Save, Search, CreditCard, Loader2 } f
 import { supabase } from '../../lib/supabase';
 import { HealthInsurer, InsurancePlan } from '../../types';
 import { validateCPF, formatCPF } from '../../lib/validations';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface QuickPatientModalProps {
     isOpen: boolean;
@@ -26,6 +27,7 @@ export const QuickPatientModal: React.FC<QuickPatientModalProps> = ({ isOpen, on
     const [plans, setPlans] = useState<InsurancePlan[]>([]);
     const [searchingInsurers, setSearchingInsurers] = useState(false);
     const [insurerSearchQuery, setInsurerSearchQuery] = useState('');
+    const { selectedClinic } = useAuth();
 
     useEffect(() => {
         if (isOpen) {
@@ -48,12 +50,9 @@ export const QuickPatientModal: React.FC<QuickPatientModalProps> = ({ isOpen, on
         if (!insurerSearchQuery.trim()) return;
         setSearchingInsurers(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            const { data: profile } = await supabase.from('profiles').select('clinic_id').eq('id', user?.id).single();
-
             let query = supabase.from('health_insurers').select('*');
-            if (profile?.clinic_id) {
-                query = query.eq('clinic_id', profile.clinic_id);
+            if (selectedClinic?.id) {
+                query = query.eq('clinic_id', selectedClinic.id);
             }
             query = query.ilike('name', `%${insurerSearchQuery}%`);
 
@@ -90,16 +89,7 @@ export const QuickPatientModal: React.FC<QuickPatientModalProps> = ({ isOpen, on
 
         setLoading(true);
         try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (!user) throw new Error('Usuário não autenticado');
-
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('clinic_id')
-                .eq('id', user.id)
-                .single();
-
-            if (!profile?.clinic_id) throw new Error('Clínica não encontrada');
+            if (!selectedClinic?.id) throw new Error('Clínica não encontrada');
 
             // 1. Create Patient
             const { data: patient, error: patientError } = await supabase
@@ -109,7 +99,7 @@ export const QuickPatientModal: React.FC<QuickPatientModalProps> = ({ isOpen, on
                     whatsapp: formData.whatsapp,
                     cpf: formData.cpf,
                     medical_record_number: formData.medical_record_number,
-                    clinic_id: profile.clinic_id,
+                    clinic_id: selectedClinic.id,
                     status: 'ativo',
                     lgpd_consent: true,
                     lgpd_consent_at: new Date().toISOString(),
@@ -124,7 +114,7 @@ export const QuickPatientModal: React.FC<QuickPatientModalProps> = ({ isOpen, on
                 const { error: insError } = await supabase
                     .from('patient_insurances')
                     .insert([{
-                        clinic_id: profile.clinic_id,
+                        clinic_id: selectedClinic.id,
                         patient_id: patient.id,
                         plan_id: formData.plan_id,
                         card_number: formData.card_number,

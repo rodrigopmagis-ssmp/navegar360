@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Users, FileText, Plus, Clock, MessageSquare, ListTodo, Settings as SettingsIcon, ChevronRight, X, Calendar, Video, Check, Edit2, Trash2, AlertCircle, Heart } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 type TabType = 'equipment' | 'team' | 'document' | 'beneficiary';
 
 export const ProtocolsSettings: React.FC = () => {
+    const { profile } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('equipment');
     const [selectedItem, setSelectedItem] = useState<any>(null);
     const [itemsList, setItemsList] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [authClinicId, setAuthClinicId] = useState<string>('');
 
     const [protocolStages, setProtocolStages] = useState<any[]>([]);
     const [isStagesLoading, setIsStagesLoading] = useState(false);
@@ -40,32 +41,25 @@ export const ProtocolsSettings: React.FC = () => {
 
     // Carregar Dados do Catálogo
     const fetchCatalogItems = async () => {
+        if (!profile?.clinic_id) return;
         setIsLoading(true);
         try {
-            let userClinicId = authClinicId;
-            if (!userClinicId) {
-                const { data: { user } } = await supabase.auth.getUser();
-                const { data: profile } = await supabase.from('profiles').select('clinic_id').eq('id', user?.id).single();
-                if (profile?.clinic_id) {
-                    setAuthClinicId(profile.clinic_id);
-                    userClinicId = profile.clinic_id;
-                }
-            }
+            const clinic_id = profile.clinic_id;
 
             if (activeTab === 'equipment') {
-                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'equipment').order('name');
+                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'equipment').eq('clinic_id', clinic_id).order('name');
                 if (error) throw error;
                 setItemsList(data || []);
             } else if (activeTab === 'team') {
-                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'team').order('name');
+                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'team').eq('clinic_id', clinic_id).order('name');
                 if (error) throw error;
                 setItemsList(data || []);
             } else if (activeTab === 'document') {
-                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'document').order('name');
+                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'document').eq('clinic_id', clinic_id).order('name');
                 if (error) throw error;
                 setItemsList(data || []);
             } else if (activeTab === 'beneficiary') {
-                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'beneficiary').order('name');
+                const { data, error } = await supabase.from('protocols').select('*').eq('type', 'beneficiary').eq('clinic_id', clinic_id).order('name');
                 if (error) throw error;
                 setItemsList(data || []);
             }
@@ -79,7 +73,7 @@ export const ProtocolsSettings: React.FC = () => {
 
     useEffect(() => {
         fetchCatalogItems();
-    }, [activeTab]);
+    }, [activeTab, profile?.clinic_id]);
 
     const fetchProtocolStages = async () => {
         if (!selectedItem) {
@@ -151,7 +145,7 @@ export const ProtocolsSettings: React.FC = () => {
         const itemName = catalogItemForm.name.trim();
 
         try {
-            const clinic_id = authClinicId;
+            const clinic_id = profile?.clinic_id;
             if (!clinic_id) throw new Error('Não foi possível identificar a clínica do usuário.');
 
             // Checagem de duplicação

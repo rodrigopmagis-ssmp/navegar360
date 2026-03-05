@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 import {
     SurgeryCase, PatientV2, OrderDocument, OrderOpme, OrderEquipment, Doctor
@@ -579,6 +580,7 @@ const EquipmentCard: React.FC<{
     const [isDispenseModalOpen, setIsDispenseModalOpen] = useState(false);
     const [cancelType, setCancelType] = useState<'waived' | 'not_available'>('waived');
     const [dispenseReason, setDispenseReason] = useState(eq.dispense_reason || '');
+    const { user } = useAuth();
 
     // Protocols state
     const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
@@ -623,7 +625,6 @@ const EquipmentCard: React.FC<{
 
     const insertEquipmentEvent = async (action: string, justification?: string) => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase.from('case_equipment_events').insert({
                 equipment_id: eq.id,
                 action,
@@ -1822,6 +1823,7 @@ const ParticipantCard: React.FC<{
     const [notes, setNotes] = useState<Record<string, any[]>>({});
     const [contactEvents, setContactEvents] = useState<Record<string, any[]>>({});
     const [completedActions, setCompletedActions] = useState<Set<string>>(new Set());
+    const { user } = useAuth();
 
     // Modal & Interaction States
     const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
@@ -1860,7 +1862,6 @@ const ParticipantCard: React.FC<{
 
     const insertParticipantEvent = async (action: string, justification?: string) => {
         try {
-            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase.from('case_participant_events').insert({
                 participant_id: participant.id,
                 action,
@@ -2826,6 +2827,7 @@ const CommunicationJourneyCard: React.FC<{
     const [responseIsNo, setResponseIsNo] = useState<string | null>(null);
     const [tempResponse, setTempResponse] = useState('');
     const [newDeadline, setNewDeadline] = useState('');
+    const { permissions } = useAuth();
 
     const fetchStagesAndExecutions = useCallback(async () => {
         if (!journey.protocol_id || !surgeryCase?.id) return;
@@ -3050,9 +3052,11 @@ const CommunicationJourneyCard: React.FC<{
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={handleDeleteJourney} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    {permissions.can_delete_schedule && (
+                        <button onClick={handleDeleteJourney} className="p-2 text-slate-300 hover:text-red-500 transition-colors" title="Remover jornada">
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -3739,6 +3743,7 @@ const DocumentsTab: React.FC<{
 }> = ({ documents, onUpdate }) => {
 
     const [updating, setUpdating] = useState<string | null>(null);
+    const { permissions } = useAuth();
 
     const handleStatusUpdate = async (docId: string, status: string) => {
         setUpdating(docId);
@@ -3846,9 +3851,11 @@ const DocumentsTab: React.FC<{
                                     </div>
 
                                     <div className="col-span-1 flex justify-end">
-                                        <button title="Excluir documento" className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        {permissions.can_delete_schedule && (
+                                            <button title="Excluir documento" className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             )
