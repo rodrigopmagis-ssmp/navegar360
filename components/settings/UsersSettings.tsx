@@ -6,7 +6,7 @@ import { UserClinic } from '../../types';
 import toast from 'react-hot-toast';
 
 export const UsersSettings: React.FC = () => {
-    const { user, profile, selectedClinic } = useAuth();
+    const { user, profile, selectedClinic, userClinics } = useAuth();
     const [members, setMembers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'pending' | 'active' | 'inactive'>('active');
@@ -22,6 +22,8 @@ export const UsersSettings: React.FC = () => {
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState<'technician' | 'admin'>('technician');
+    const adminClinics = userClinics.filter(c => c.role === 'admin' && c.status === 'active' && c.clinics);
+    const [selectedInviteClinic, setSelectedInviteClinic] = useState<string>(selectedClinic?.clinic_id || '');
     const [invitePermissions, setInvitePermissions] = useState({
         can_create_case: true,
         can_delete_schedule: false,
@@ -159,7 +161,7 @@ export const UsersSettings: React.FC = () => {
                     },
                     body: JSON.stringify({
                         email: inviteEmail.trim().toLowerCase(),
-                        clinic_id: selectedClinic.clinic_id,
+                        clinic_id: selectedInviteClinic || selectedClinic.clinic_id,
                         role: inviteRole,
                         permissions: invitePermissions,
                         invited_by: user?.id,
@@ -188,6 +190,7 @@ export const UsersSettings: React.FC = () => {
     const resetInviteModal = () => {
         setInviteEmail('');
         setInviteRole('technician');
+        setSelectedInviteClinic(selectedClinic?.clinic_id || adminClinics[0]?.clinic_id || '');
         setInvitePermissions({ can_create_case: true, can_delete_schedule: false, can_access_reports: true, can_manage_users: false, can_view_financial: false });
         setInviteLink(null);
         setIsInviteModalOpen(false);
@@ -365,6 +368,24 @@ export const UsersSettings: React.FC = () => {
                                         className="w-full pl-9 pr-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-50 disabled:text-slate-400"
                                     />
                                 </div>
+                            </div>
+
+                            {/* Clínica Alvo */}
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1.5">Clínica</label>
+                                <select
+                                    value={selectedInviteClinic}
+                                    onChange={e => setSelectedInviteClinic(e.target.value)}
+                                    disabled={!!inviteLink || adminClinics.length <= 1}
+                                    className="w-full py-2.5 px-3 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:bg-slate-50 disabled:text-slate-500"
+                                    title="Clínica"
+                                >
+                                    {adminClinics.map(uc => (
+                                        <option key={uc.clinic_id} value={uc.clinic_id}>
+                                            {uc.clinics?.name || 'Clínica Desconhecida'}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
 
                             {/* Papel */}
