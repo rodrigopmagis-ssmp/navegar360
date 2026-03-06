@@ -1,69 +1,42 @@
-# PLAN.md - Refatoração do Novo Pedido Médico Detalhado
+# Plano de Execução: Kits Padrão de Cirurgia (Orchestration - Phase 1)
 
-## 🎯 Objetivo Principal
-Melhorar a experiência e estrutura do "Cadastro de Pedido Médico Detalhado" (`/new-order`), substituindo o modelo atual de scroll vertical único por um sistema de **Abas Isoladas**. A principal alteração ocorrerá na primeira aba ("Pedido Médico"), que deverá trazer maior detalhamento e validações avançadas (cruzamento com agenda do médico).
+## 🎯 Objetivo
+Criar um cadastro de "Kits Padrão" que agrupe múltiplos itens (procedimentos, exames, OPME, equipamentos, participante e documentos) para padronizar e agilizar a criação de pedidos médicos rotineiros (ex: "Kit Colecistectomia"). 
 
----
+Os principais pontos de extensão na UI serão:
+1. **Configurações > Protocolos Cirúrgicos:** Adicionar uma nova aba chamada "Kit Padrão".
+2. **Novo Pedido Médico:** Adicionar um botão "Carregar Kit Padrão" que preenche automaticamente as seções do formulário ativo.
 
-## 🏗️ Requisitos do Novo Formato
+## 🏗️ 1. Arquitetura de Banco de Dados (Supabase)
+Precisaremos espelhar a estrutura dos itens que compõem um "pedido" (`order_*`), mas associados a um `kit_id` genérico e uma `clinic_id`.
 
-### 1. Sistema de Abas Isoladas
-A navegação não deve mais utilizar scroll âncora para descer a página mostrando todas as seções. Cada seção será renderizada isoladamente com base na aba ativada (`activeTab`), semelhante ao feito em `PatientDetail.tsx` e `DoctorDetail.tsx`:
-- Pedido Médico
-- Procedimentos
-- Exames
-- Documentos
-- OPME
-- Equipamentos
+**Novas Tabelas (Data Schema):**
+- `standard_kits` (`id`, `clinic_id`, `name`, `description`, `status`)
+- `standard_kit_procedures` (`id`, `kit_id`, `code`, `name`, `description`, `quantity`, `is_main`)
+- `standard_kit_exams` (`id`, `kit_id`, `exam_name`, `exam_type`, `justification`, `quantity`)
+- `standard_kit_documents` (`id`, `kit_id`, `document_type`, `template_name`, `is_required`)
+- `standard_kit_opme` (`id`, `kit_id`, `name`, `description`, `quantity`, `justification`)
+- `standard_kit_equipments` (`id`, `kit_id`, `name`, `description`, `quantity`)
+- `standard_kit_participants` (`id`, `kit_id`, `role`, `specialty`)
 
-### 2. Primeira Aba: "Pedido Médico"
-Deve reunir as seguintes informações dispostas de forma ergonômica e limpa:
+**Regras de Segurança (RLS):**
+- Serão vinculadas ao `clinic_id` via as tabelas para garantir que as clínicas só enxergam e aplicam seus próprios "Kits Padrão".
 
-#### A. Dados do Beneficiário (Paciente)
-* Nome
-* Idade (Calculada a partir da Data de Nascimento)
-* Telefone / Celular
-* E-mail
-* Sexo Biológico
-* Operadora (Convênio)
-* Número da Carteira/Cartão
-* Validade do Cartão
+## 💻 2. Alterações Frontend
 
-#### B. Profissional Solicitante (Médico)
-* Nome do Médico Solicitante
-* Conselho (Ex: CRM, CRO)
-* Número do Conselho
+### 2.1 Tela "Protocolos Cirúrgicos" (`components/settings/ProtocolsSettings.tsx`)
+- Adição de Tab Navigation (Aba 1: "Etapas/Ações", Aba 2: "Kits Padrão").
+- A tela de "Kits Padrão" terá um Sidebar pareado (Lista de Kits) e um painel de edição (Detalhes, Itens do Kit).
+- Poderemos adicionar itens semelhantes ao formulário de cadastro, salvando no banco.
 
-#### C. Local de Execução
-* Seleção: "Na própria clínica" ou "Em parceiro externo"
-* Se parceiro externo, mostrar select com a lista de hospitais
-* Informações do Hospital: Nome Fantasia e CNPJ
+### 2.2 Tela "Novo Pedido Médico" (`pages/NewOrder.tsx`)
+- Adição de um botão de conveniência próximo ao Título: **[+ Carregar Kit Padrão]**.
+- Ao clicar, um Modal abre listando todos os Kits da clínica (`status = 'active'`).
+- Ao escolher o Kit, as listas no `estado global/local` (ex: `selectedProcedures`, `selectedOPME`, `selectedEquipments`, etc.) são **alimentadas com os dados do Kit Padrão**.
 
-#### D. Agendamento e Validação
-* Data e Hora prevista do procedimento
-*  **Regra de Cruzamento:** Ao escolher o Profissional e a Data Prevista, o sistema deve garantir de que a **agenda do médico** não possui outro *surgery_case* (procedimento) alocado para esse exato mesmo horário, impedindo marcações simultâneas e alertando o usuário.
+## 🛠️ Próximos Passos (Orquestração Phase 2 - Implementação Paralela)
 
-#### E. Classificação Clínica e Atendimento
-* **Tipo de Atendimento:**
-  - Ambulatorial (Sem opção de informar número de diárias)
-  - Internamento (Selecionar "Diária de Internação" ou "Hospital Dia". Se for Internação, mostrar campo input "Número de Diárias")
-* **Caráter:** Urgência ou Eletiva
-* **CID 10:** Input combobox autoavaliador (ou simples se for digitável por código)
-* **Diagnóstico:** Campo de texto descritivo e extenso (`textarea` preferencialmente com dimensionamento ajustável pelo usuário para descrever com detalhes).
-
----
-
-## 🤖 Agentes Orquestrados Para Implementação
-
-1. **`project-planner`**: (Concluído) Definição do plano de abas e mapeamento da primeira tela de Dados da Cirurgia/Beneficiário.
-2. **`frontend-specialist`**: (Pendente) Transformar o layut atual `<NewOrder />` em abas de estado local. Modularizar os componentes de cada aba (ex: `<DataSurgeryTab />`). Integrar campos visuais listados no requisito `2`.
-3. **`backend-specialist` e `explorer`**: (Pendente) Implementar o script de "Verificação de Choque de Horário" na agenda do médico (Supabase Queries e RLS de listagem das cirurgias agendadas da clínica/médico) e preencher combos de autocomplete de pacientes/médicos.
-4. **`test-engineer`**: (Pendente) Testar todo o preenchimento, validando se a aba "Pedido Médico" esconde completamente o restante do conteúdo, bloqueia choque de agendas e se os campos condicionados (ex: "Número de Diárias" se mostrar só em Internação) trocam corretamente de estado.
-
----
-
-## 🔒 User Review Required
-> [!IMPORTANT]
-> O Plano acima engloba toda a refatoração pedida sobre o Pedido Médico Detalhado (abas isoladas, dados explícitos de paciente/médico com cruze da agenda, local da cirurgia e formulário de diagnóstico/CID). 
-> 
-> Gostaria de aprovar este **Plano Oficial** e iniciar a execução técnica (Fase de Implementação) com os Agentes Front-end e Back-end agora mesmo?
+Assim que obter sua aprovação, orquestraremos os seguintes Agentes para executar as mudanças:
+1. **`database-architect`** e **`security-auditor`**: Criarão o script SQL para as 7 novas tabelas os respectivos RLS.
+2. **`backend-specialist`** e **`frontend-specialist`**: Criarão o CRUD de Kits na tela de Protocolos e a função de injeção dos itens no formulário de `NewOrder.tsx`.
+3. **`test-engineer`**: Garantirá que o payload da cirurgia saia íntegro após um Kit ter sido carregado e enviado.

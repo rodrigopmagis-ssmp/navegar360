@@ -206,8 +206,14 @@ export type DocumentType =
   | 'laudo'
   | 'risco_cirurgico'
   | 'termo_consentimento'
-  | 'documento_acompanhante'
+  | 'termo_anestesico'
+  | 'documento_identificacao'
+  | 'carteira_convenio'
+  | 'guia_autorizacao'
   | 'lista_medicamentos'
+  | 'exame_laboratorial'
+  | 'exame_imagem'
+  | 'documento_acompanhante'
   | 'personalizado';
 
 export interface OrderDocument {

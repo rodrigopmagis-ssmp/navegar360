@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Calendar, Plus, Trash2, Search, FileText,
-  Package, Microscope, Save, ChevronRight, Activity, AlertTriangle, File, Upload, Check, ClipboardCheck, Phone, Mail, CheckCircle, Eye, UserCog
+  Package, Microscope, Save, ChevronRight, Activity, AlertTriangle, File, Upload, Check, ClipboardCheck, Phone, Mail, CheckCircle, Eye, UserCog, X, Users, ChevronDown, ChevronUp, ArrowLeft, Pill, Dna, Stethoscope, Briefcase, MapPin, Users as UsersIcon, ChevronRight as ChevronRightIcon, Plus as PlusIcon
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
 import { PatientV2, Doctor, OrderDocument, DocumentType, OrderOpme, OrderEquipment, OrderParticipant } from '../types';
 import { useDoctors } from '../hooks/useDoctors';
 import { DoctorSearchModal } from '../components/modals/DoctorSearchModal';
@@ -122,9 +123,286 @@ export const NewOrder: React.FC = () => {
   const [savedOrderId, setSavedOrderId] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  // Kits
+  const [isKitModalOpen, setIsKitModalOpen] = useState(false);
+  const [availableKits, setAvailableKits] = useState<any[]>([]);
+  const [isKitsLoading, setIsKitsLoading] = useState(false);
+  const [selectedKitForPreview, setSelectedKitForPreview] = useState<any | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [kitPreviewCounts, setKitPreviewCounts] = useState<any>(null);
+
   // Others (From old layout)
   const [anesthesia, setAnesthesia] = useState(true);
 
+  // --- Draft Persistence Logic ---
+  const DRAFT_KEY = `navegar360_order_draft_${selectedClinic?.clinic_id}`;
+
+  // Restore Draft on Mount
+  useEffect(() => {
+    if (!passedOrderId && selectedClinic?.clinic_id) {
+      const savedDraft = localStorage.getItem(DRAFT_KEY);
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft);
+          // Only restore if user confirms or just do it automatically for better flow
+          // Let's do it automatically but with a toast notification
+          setSelectedPatientId(draft.selectedPatientId || '');
+          setSelectedDoctorId(draft.selectedDoctorId || '');
+          setLocalType(draft.localType || 'clinica');
+          setSelectedHospitalId(draft.selectedHospitalId || '');
+          setSurgeryDate(draft.surgeryDate || '');
+          setAttendanceType(draft.attendanceType || 'ambulatorial');
+          setInternmentType(draft.internmentType || 'diaria');
+          setInternmentDays(draft.internmentDays || '');
+          setCharacter(draft.character || 'eletiva');
+          setCids(draft.cids || ['']);
+          setDiagnosis(draft.diagnosis || '');
+          setProcedures(draft.procedures || []);
+          setExams(draft.exams || []);
+          setOrderDocuments(draft.orderDocuments || []);
+          setOpmeItems(draft.opmeItems || []);
+          setEquipmentItems(draft.equipmentItems || []);
+          setParticipantItems(draft.participantItems || []);
+          setAnesthesia(draft.anesthesia ?? true);
+
+          toast.success('Rascunho restaurado automaticamente.');
+        } catch (e) {
+          console.error('Failed to restore draft:', e);
+        }
+      }
+    }
+  }, [selectedClinic?.clinic_id, passedOrderId]);
+
+  // Auto-Save Draft
+  useEffect(() => {
+    if (passedOrderId) return; // Don't save drafts when editing existing orders
+
+    const draftData = {
+      selectedPatientId,
+      selectedDoctorId,
+      localType,
+      selectedHospitalId,
+      surgeryDate,
+      attendanceType,
+      internmentType,
+      internmentDays,
+      character,
+      cids,
+      diagnosis,
+      procedures,
+      exams,
+      orderDocuments,
+      opmeItems,
+      equipmentItems,
+      participantItems,
+      anesthesia,
+    };
+
+    const timer = setTimeout(() => {
+      if (selectedClinic?.clinic_id && (selectedPatientId || procedures.length > 0)) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+      }
+    }, 1000); // 1s debounce
+
+    return () => clearTimeout(timer);
+  }, [
+    selectedPatientId, selectedDoctorId, localType, selectedHospitalId,
+    surgeryDate, attendanceType, internmentType, internmentDays,
+    character, cids, diagnosis, procedures, exams,
+    orderDocuments, opmeItems, equipmentItems, participantItems,
+    anesthesia, selectedClinic?.clinic_id, passedOrderId
+  ]);
+
+  const clearDraft = () => {
+    localStorage.removeItem(DRAFT_KEY);
+  };
+  // --------------------------------
+
+
+  const openKitModal = async () => {
+    setIsKitModalOpen(true);
+    setSelectedKitForPreview(null);
+    setKitPreviewCounts(null);
+    setImportProgress(0);
+    setIsImporting(false);
+    if (!selectedClinic?.clinic_id) return;
+    setIsKitsLoading(true);
+    try {
+      const { data, error } = await supabase.from('standard_kits').select('*').eq('clinic_id', selectedClinic.clinic_id).eq('status', 'active');
+      if (error) throw error;
+      setAvailableKits(data || []);
+    } catch (err: any) {
+      toast?.error?.('Erro ao buscar kits: ' + err.message);
+    } finally {
+      setIsKitsLoading(false);
+    }
+  };
+
+  const preLoadKit = async (kit: any) => {
+    setSelectedKitForPreview(kit);
+    setIsKitsLoading(true);
+    try {
+      const kitId = kit.id;
+      const [
+        { count: procs }, { count: exs }, { count: docs },
+        { count: opmes }, { count: equips }, { count: parts }
+      ] = await Promise.all([
+        supabase.from('standard_kit_procedures').select('*', { count: 'exact', head: true }).eq('kit_id', kitId),
+        supabase.from('standard_kit_exams').select('*', { count: 'exact', head: true }).eq('kit_id', kitId),
+        supabase.from('standard_kit_documents').select('*', { count: 'exact', head: true }).eq('kit_id', kitId),
+        supabase.from('standard_kit_opme').select('*', { count: 'exact', head: true }).eq('kit_id', kitId),
+        supabase.from('standard_kit_equipments').select('*', { count: 'exact', head: true }).eq('kit_id', kitId),
+        supabase.from('standard_kit_participants').select('*', { count: 'exact', head: true }).eq('kit_id', kitId)
+      ]);
+
+      setKitPreviewCounts({
+        procedures: procs || 0,
+        exams: exs || 0,
+        documents: docs || 0,
+        opme: opmes || 0,
+        equipments: equips || 0,
+        participants: parts || 0
+      });
+    } catch (err: any) {
+      console.error('Error preloading kit summary:', err);
+    } finally {
+      setIsKitsLoading(false);
+    }
+  };
+
+  const startImport = async () => {
+    if (!selectedKitForPreview) return;
+    setIsImporting(true);
+    setImportProgress(0);
+
+    const duration = 1000; // 1s
+    const interval = 50;
+    const steps = duration / interval;
+    const increment = 100 / steps;
+
+    const timer = setInterval(() => {
+      setImportProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(timer);
+          return 100;
+        }
+        return prev + increment;
+      });
+    }, interval);
+
+    setTimeout(async () => {
+      await handleLoadKit(selectedKitForPreview.id);
+      clearInterval(timer);
+      setImportProgress(100);
+      setIsImporting(false);
+      setIsKitModalOpen(false);
+    }, duration + 100);
+  };
+
+  const handleLoadKit = async (kitId: string) => {
+    try {
+      setIsKitsLoading(true);
+      const [
+        { data: procs }, { data: exs }, { data: docs },
+        { data: opmes }, { data: equips }, { data: parts }
+      ] = await Promise.all([
+        supabase.from('standard_kit_procedures').select('*').eq('kit_id', kitId),
+        supabase.from('standard_kit_exams').select('*').eq('kit_id', kitId),
+        supabase.from('standard_kit_documents').select('*').eq('kit_id', kitId),
+        supabase.from('standard_kit_opme').select('*').eq('kit_id', kitId),
+        supabase.from('standard_kit_equipments').select('*').eq('kit_id', kitId),
+        supabase.from('standard_kit_participants').select('*').eq('kit_id', kitId)
+      ]);
+
+      if (procs && procs.length > 0) {
+        setProcedures(prev => {
+          let n = [...prev];
+          procs.forEach((p: any) => {
+            if (!n.some(op => op.code === p.code || op.description === p.name)) {
+              n.push({
+                id: crypto.randomUUID(),
+                code: p.code || '',
+                description: p.name || '',
+                quantity: p.quantity || 1,
+                is_main: p.is_main || false
+              });
+            }
+          });
+          return n;
+        });
+        const main = procs.find((p: any) => p.is_main);
+        if (main && !mainProcedureId) {
+          const found = procedures.find(p => p.code === main.code || p.description === main.name);
+          if (found) setMainProcedureId(found.id);
+        }
+      }
+      if (exs && exs.length > 0) {
+        setExams(prev => {
+          let n = [...prev];
+          exs.forEach((e: any) => {
+            if (!n.some(ox => ox.code === e.exam_type || ox.description === e.exam_name)) {
+              n.push({
+                id: crypto.randomUUID(),
+                code: e.exam_type || '',
+                description: e.exam_name || '',
+                quantity: e.quantity || 1
+              });
+            }
+          });
+          return n;
+        });
+      }
+      if (docs && docs.length > 0) {
+        setOrderDocuments(prev => [...prev, ...docs.map((d: any) => ({
+          id: crypto.randomUUID(),
+          type: (d.document_type || d.type || 'personalizado') as any,
+          is_annexed_locally: false,
+          has_no_expiry: true
+        }))]);
+      }
+      if (opmes && opmes.length > 0) {
+        setOpmeItems(prev => [...prev, ...opmes.map((o: any) => ({
+          id: crypto.randomUUID(),
+          description: o.description || o.name || '',
+          justification: o.justification || '',
+          quantity: o.quantity || 1,
+          suggested_vendor: o.details || o.manufacturer || o.suggested_vendor || ''
+        }))]);
+      }
+      if (equips && equips.length > 0) {
+        setEquipmentItems(prev => [...prev, ...equips.map((e: any) => ({
+          id: crypto.randomUUID(),
+          name: e.name || '',
+          quantity: e.quantity || 1,
+          notes: e.description || e.notes || ''
+        }))]);
+      }
+      if (parts && parts.length > 0) {
+        setParticipantItems(prev => [...prev, ...parts.map((p: any) => {
+          const rawRole = p.team_role_id || p.role_id || p.role || '';
+          const rawDoc = p.professional_id || p.specialty_id || p.specialty || p.doctor_id || '';
+
+          // Try to resolve human-readable names to IDs if we have them
+          const resolvedRole = availableRoles.find(r => r.id === rawRole || r.name === rawRole)?.id || rawRole;
+          const resolvedDoc = doctors.find(d => d.id === rawDoc || d.full_name === rawDoc)?.id || rawDoc;
+
+          return {
+            id: crypto.randomUUID(),
+            team_role_id: resolvedRole,
+            professional_id: resolvedDoc
+          };
+        })]);
+      }
+
+      toast?.success?.('Kit adicionado com sucesso!');
+      setIsKitModalOpen(false);
+    } catch (err: any) {
+      toast?.error?.('Erro ao carregar kit: ' + err.message);
+    } finally {
+      setIsKitsLoading(false);
+    }
+  };
 
   // Load Existing Order if Edit Mode
   useEffect(() => {
@@ -206,12 +484,12 @@ export const NewOrder: React.FC = () => {
   useEffect(() => {
     const fetchEquipments = async () => {
       try {
-        if (selectedClinic?.id) {
+        if (selectedClinic?.clinic_id) {
           const { data } = await supabase
             .from('protocols')
             .select('name')
             .eq('type', 'equipment')
-            .eq('clinic_id', selectedClinic.id)
+            .eq('clinic_id', selectedClinic.clinic_id)
             .eq('active', true)
             .order('name');
           if (data && data.length > 0) {
@@ -226,18 +504,18 @@ export const NewOrder: React.FC = () => {
       setAvailableEquipments(['Arco Cirúrgico', 'Torre de Vídeo', 'Microscópio', 'Bisturi Elétrico', 'Motor de Ortopedia', 'Monitor Multiparamétrico']);
     };
     fetchEquipments();
-  }, []);
+  }, [selectedClinic?.clinic_id]);
 
   // Load available roles
   useEffect(() => {
     const fetchRoles = async () => {
       try {
-        if (selectedClinic?.id) {
+        if (selectedClinic?.clinic_id) {
           const { data } = await supabase
             .from('protocols')
             .select('id, name')
             .eq('type', 'team')
-            .eq('clinic_id', selectedClinic.id)
+            .eq('clinic_id', selectedClinic.clinic_id)
             .eq('active', true)
             .order('name');
           if (data && data.length > 0) {
@@ -251,7 +529,7 @@ export const NewOrder: React.FC = () => {
       setAvailableRoles([]);
     };
     fetchRoles();
-  }, []);
+  }, [selectedClinic?.clinic_id]);
 
   // Validate Agenda (Conflict checking)
   useEffect(() => {
@@ -330,11 +608,11 @@ export const NewOrder: React.FC = () => {
     try {
       setSaving(true);
 
-      if (!selectedClinic?.id) throw new Error('Clínica não encontrada');
+      if (!selectedClinic?.clinic_id) throw new Error('Clínica não encontrada');
 
       // 2. Insert or Update surgical case (Order)
       const orderPayload = {
-        clinic_id: selectedClinic.id,
+        clinic_id: selectedClinic.clinic_id,
         patient_id: selectedPatientId,
         doctor_id: selectedDoctorId,
         hospital_id: localType === 'parceiro' ? selectedHospitalId : null,
@@ -502,6 +780,7 @@ export const NewOrder: React.FC = () => {
 
       setSavedOrderId(order?.id || passedOrderId);
       setShowSuccessModal(true);
+      clearDraft();
 
     } catch (error: any) {
       console.error('Error saving order:', error);
@@ -536,12 +815,21 @@ export const NewOrder: React.FC = () => {
       <div className="max-w-5xl mx-auto pb-8 animate-fade-in relative">
 
         {/* Header - Manual Margin */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-800">Cadastro de Pedido Médico Detalhado</h1>
-          <p className="text-slate-500 text-sm mt-1 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-amber-400"></span>
-            Preencha as informações necessárias para formalizar o pedido cirúrgico.
-          </p>
+        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">Cadastro de Pedido Médico Detalhado</h1>
+            <p className="text-slate-500 text-sm mt-1 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+              Preencha as informações necessárias para formalizar o pedido cirúrgico.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openKitModal}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-50 text-primary-700 hover:bg-primary-100 rounded-lg font-bold text-sm transition-colors border border-primary-200 shadow-sm"
+          >
+            <Package className="w-4 h-4" /> Carregar Kit Padrão
+          </button>
         </div>
 
         {/* Top Navigation Tabs - REFORÇO MÁXIMO */}
@@ -1067,14 +1355,20 @@ export const NewOrder: React.FC = () => {
                             }}
                             className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none focus:ring-2 focus:ring-primary-500"
                           >
-                            <option value="exames">Exames</option>
-                            <option value="pedido_medico">Pedido Médico</option>
-                            <option value="laudo">Laudos de Exames</option>
-                            <option value="risco_cirurgico">Risco Cirúrgico</option>
+                            <option value="exames">Exames (Laboratorial/Imagem)</option>
                             <option value="termo_consentimento">Termo de Consentimento</option>
+                            <option value="termo_anestesico">Termo Anestésico</option>
+                            <option value="risco_cirurgico">Risco Cirúrgico</option>
+                            <option value="guia_autorizacao">Guia/Autorização</option>
+                            <option value="pedido_medico">Pedido Médico</option>
+                            <option value="laudo">Laudos Médicos</option>
+                            <option value="carteira_convenio">Carteira do Convênio</option>
+                            <option value="documento_identificacao">Documento de Identificação</option>
                             <option value="documento_acompanhante">Documentos do Acompanhante</option>
                             <option value="lista_medicamentos">Lista de Medicamentos</option>
-                            <option value="personalizado">Personalizado...</option>
+                            <option value="exame_laboratorial">Exame Laboratorial (PDF)</option>
+                            <option value="exame_imagem">Exame de Imagem (PDF)</option>
+                            <option value="personalizado">Outro / Personalizado...</option>
                           </select>
                           {doc.type === 'personalizado' && (
                             <input
@@ -1462,6 +1756,139 @@ export const NewOrder: React.FC = () => {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isKitModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Package className="w-5 h-5 text-primary-600" />
+                {selectedKitForPreview ? 'Resumo da Importação' : 'Carregar Kit Padrão'}
+              </h2>
+              <button disabled={isImporting} onClick={() => setIsKitModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-full disabled:opacity-30"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="p-6 overflow-y-auto">
+              {!selectedKitForPreview ? (
+                <>
+                  <p className="text-sm text-slate-500 mb-6 font-medium">Selecione um Kit Padrão para preencher automaticamente os procedimentos, exames, OPME, equipamentos e participantes desta cirurgia.</p>
+
+                  {isKitsLoading ? (
+                    <div className="flex flex-col items-center justify-center p-12 space-y-4">
+                      <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary-500/20 border-t-primary-600"></div>
+                      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Buscando Kits...</p>
+                    </div>
+                  ) : availableKits.length === 0 ? (
+                    <div className="text-center p-12 bg-slate-50 border border-slate-200 border-dashed rounded-2xl">
+                      <Package className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                      <p className="text-slate-600 font-bold mb-1">Nenhum kit padrão ativo</p>
+                      <p className="text-slate-400 text-xs">Configure-os na tela de Protocolos Cirúrgicos.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3">
+                      {availableKits.map((kit: any) => (
+                        <button
+                          key={kit.id}
+                          onClick={() => preLoadKit(kit)}
+                          className="w-full text-left p-4 border-2 border-slate-100 rounded-xl hover:border-primary-500 hover:bg-primary-50/50 transition-all group relative overflow-hidden"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <h4 className="font-bold text-slate-800 text-base group-hover:text-primary-700 transition-colors uppercase tracking-tight">{kit.name}</h4>
+                              {kit.description && <p className="text-xs text-slate-500 mt-1 line-clamp-1">{kit.description}</p>}
+                            </div>
+                            <div className="bg-slate-50 p-2 rounded-lg group-hover:bg-primary-100 transition-colors">
+                              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-primary-600" />
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                  <div className="text-center pb-2">
+                    <div className="w-16 h-16 bg-primary-50 text-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
+                      <Package className="w-8 h-8" />
+                    </div>
+                    <h3 className="text-xl font-black text-slate-800 uppercase tabular-nums tracking-tighter mb-1">{selectedKitForPreview.name}</h3>
+                    <p className="text-sm text-slate-500">{selectedKitForPreview.description || 'Kit pronto para importação.'}</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 p-2">
+                    {[
+                      { label: 'Procedimentos', count: kitPreviewCounts?.procedures, icon: Activity, color: 'text-blue-600 bg-blue-50' },
+                      { label: 'Exames', count: kitPreviewCounts?.exams, icon: FileText, color: 'text-indigo-600 bg-indigo-50' },
+                      { label: 'Documentos', count: kitPreviewCounts?.documents, icon: File, color: 'text-emerald-600 bg-emerald-50' },
+                      { label: 'Matérias OPME', count: kitPreviewCounts?.opme, icon: Package, color: 'text-amber-600 bg-amber-50' },
+                      { label: 'Equipamentos', count: kitPreviewCounts?.equipments, icon: Microscope, color: 'text-purple-600 bg-purple-50' },
+                      { label: 'Participantes', count: kitPreviewCounts?.participants, icon: Users, color: 'text-rose-600 bg-rose-50' }
+                    ].map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${item.color}`}>
+                          <item.icon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{item.label}</p>
+                          <p className="text-lg font-black text-slate-800">{isKitsLoading ? '...' : item.count}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {isImporting && (
+                    <div className="pt-4 animate-in fade-in duration-300">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-bold text-primary-600 uppercase tracking-widest animate-pulse">Importando Dados...</span>
+                        <span className="text-xs font-bold text-slate-600 tabular-nums">{Math.round(importProgress)}%</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden border border-slate-200">
+                        <div
+                          className="bg-primary-600 h-full transition-all duration-75 ease-linear shadow-[0_0_10px_rgba(37,99,235,0.4)]"
+                          style={{ width: `${importProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-5 border-t bg-slate-50 flex justify-between gap-3">
+              {selectedKitForPreview ? (
+                <>
+                  <button
+                    disabled={isImporting}
+                    onClick={() => setSelectedKitForPreview(null)}
+                    className="px-6 py-3 font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-all disabled:opacity-30"
+                  >
+                    Voltar
+                  </button>
+                  <button
+                    disabled={isImporting || isKitsLoading}
+                    onClick={startImport}
+                    className="flex-1 px-8 py-3 bg-primary-600 text-white font-black uppercase tracking-widest rounded-xl shadow-lg shadow-primary-600/20 hover:bg-primary-700 transform active:scale-95 transition-all disabled:opacity-50 disabled:scale-100 flex items-center justify-center gap-2"
+                  >
+                    {isImporting ? (
+                      <>Processando...</>
+                    ) : (
+                      <>CONFIRMAR IMPORTAÇÃO</>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setIsKitModalOpen(false)}
+                  className="w-full px-6 py-3 font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-all"
+                >
+                  Fechar
+                </button>
+              )}
             </div>
           </div>
         </div>

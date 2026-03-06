@@ -42,6 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userClinics, setUserClinics] = useState<UserClinic[]>([]);
     const [selectedClinic, setSelectedClinic] = useState<UserClinic | null>(null);
     const [loading, setLoading] = useState(true);
+    const profileRef = React.useRef<Profile | null>(null);
 
     const fetchUserData = async (currentUser: User) => {
         try {
@@ -57,6 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             setProfile(profileData);
+            profileRef.current = profileData;
 
             // Fetch user_clinics with clinics join
             const { data: clinicsData, error: clinicsError } = await supabase
@@ -123,10 +125,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setUser(session?.user ?? null);
             if (session?.user) {
-                setLoading(true);
+                // Only show loading if we don't have a profile yet to avoid flickering and unmounting
+                if (!profileRef.current) setLoading(true);
                 fetchUserData(session.user);
             } else {
                 setProfile(null);
+                profileRef.current = null;
                 setUserClinics([]);
                 setSelectedClinic(null);
                 localStorage.removeItem('navegar360_selected_clinic');
