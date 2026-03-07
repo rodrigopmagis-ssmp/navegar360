@@ -122,8 +122,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
             setUser(session?.user ?? null);
+
+            if (event === 'PASSWORD_RECOVERY') {
+                // Redirect to set-password page
+                // We use window.location because navigate is not available here easily (it's outside HashRouter usually)
+                // App.tsx is inside AuthProvider, but AuthProvider is outside HashRouter.
+                // Wait, App.tsx is: <AuthProvider><HashRouter><AppRoutes/></HashRouter></AuthProvider>
+                // So useAuth is inside HashRouter or outside?
+                // App is: 
+                // <AuthProvider>
+                //   <DarkModeProvider>
+                //     <HashRouter>
+                //       <AppRoutes />
+                //     </HashRouter>
+                //   </DarkModeProvider>
+                // </AuthProvider>
+                // So AuthProvider is OUTSIDE HashRouter. We must use window.location.href or a state-based redirect.
+                window.location.hash = '/set-password';
+                return;
+            }
+
             if (session?.user) {
                 // Only show loading if we don't have a profile yet to avoid flickering and unmounting
                 if (!profileRef.current) setLoading(true);

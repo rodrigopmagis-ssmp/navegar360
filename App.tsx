@@ -14,6 +14,7 @@ import { DoctorDetail } from './pages/DoctorDetail';
 import { Settings } from './pages/Settings';
 import { Reports } from './pages/Reports';
 import { Home } from './pages/Home';
+import { SetPassword } from './pages/SetPassword';
 import { DarkModeProvider } from './contexts/DarkModeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { SelectClinic } from './pages/SelectClinic';
@@ -57,6 +58,7 @@ const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/set-password" element={<SetPassword />} />
       <Route path="/select-clinic" element={<SelectClinic />} />
       <Route
         path="*"
